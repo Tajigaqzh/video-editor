@@ -1,0 +1,6 @@
+# Tauri
+target/
+WixTools/
+
+# FFmpeg 打包资源
+resources/

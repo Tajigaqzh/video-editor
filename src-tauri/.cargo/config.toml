@@ -1,0 +1,16 @@
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-Wl,-rpath,@executable_path"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-Wl,-rpath,@executable_path"]
+
+[env]
+# FFmpeg 路径配置
+FFMPEG_DIR = "/opt/homebrew/opt/ffmpeg"
+PKG_CONFIG_PATH = "/opt/homebrew/opt/ffmpeg/lib/pkgconfig"
+CPATH = "/opt/homebrew/Cellar/ffmpeg/8.0.1_1/include"
+LIBRARY_PATH = "/opt/homebrew/Cellar/ffmpeg/8.0.1_1/lib"
+# 跳过 avfft.h（FFmpeg 8.0 已移除）
+BINDGEN_EXTRA_CLANG_ARGS = "-I/opt/homebrew/Cellar/ffmpeg/8.0.1_1/include"
+
+
