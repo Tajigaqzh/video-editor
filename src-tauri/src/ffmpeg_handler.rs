@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use base64::{Engine as _, engine::general_purpose};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VideoInfo {
@@ -146,16 +147,16 @@ pub fn extract_frame_to_temp(path: &str, timestamp: f64, ffmpeg_cmd: &str) -> Re
     // 优化的 FFmpeg 命令：
     // 1. -ss 在 -i 之前：输入端 seek，速度更快
     // 2. -threads 1：单线程解码，减少开销
-    // 3. -vf scale=1280:-1：缩小尺寸，加快处理
-    // 4. -q:v 5：稍微降低质量，加快编码
+    // 3. -vf scale=640:-1：缩小到 640 宽度（预览足够）
+    // 4. -q:v 8：降低质量，加快编码（2-31，越大质量越低）
     // 5. -update 1：告诉 FFmpeg 这是单帧输出，消除警告
     let status = Command::new(ffmpeg_cmd)
         .args([
             "-ss", &timestamp.to_string(),      // 输入端 seek（快速）
             "-i", path,
             "-vframes", "1",                     // 只提取一帧
-            "-vf", "scale=1280:-1",              // 缩放到 1280 宽度
-            "-q:v", "5",                         // JPEG 质量（2-31，越小越好）
+            "-vf", "scale=640:-1",               // 缩放到 640 宽度（预览用）
+            "-q:v", "8",                         // JPEG 质量（降低以加快速度）
             "-threads", "1",                     // 单线程
             "-update", "1",                      // 单帧输出模式
             "-y",
@@ -170,6 +171,25 @@ pub fn extract_frame_to_temp(path: &str, timestamp: f64, ffmpeg_cmd: &str) -> Re
 
     // 返回文件路径
     Ok(temp_file.to_string_lossy().to_string())
+}
+
+/// 提取视频帧并返回 base64 编码的 JPEG 数据
+pub fn extract_frame_to_base64(path: &str, timestamp: f64, ffmpeg_cmd: &str) -> Result<String> {
+    // 先提取到临时文件
+    let temp_path = extract_frame_to_temp(path, timestamp, ffmpeg_cmd)?;
+    
+    // 读取文件内容
+    let buffer = std::fs::read(&temp_path)
+        .context("Failed to read extracted frame")?;
+    
+    // 编码为 base64
+    let base64_str = general_purpose::STANDARD.encode(&buffer);
+    
+    // 删除临时文件
+    std::fs::remove_file(&temp_path).ok();
+    
+    // 返回 data URL
+    Ok(format!("data:image/jpeg;base64,{}", base64_str))
 }
 
 /// 裁剪视频

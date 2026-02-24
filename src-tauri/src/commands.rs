@@ -56,6 +56,18 @@ pub async fn extract_frame_to_temp(
         .map_err(|e| format!("Failed to extract frame: {}", e))
 }
 
+/// 提取视频帧并返回 base64 编码的数据 URL
+#[tauri::command]
+pub async fn extract_frame_to_base64(
+    app: AppHandle,
+    path: String,
+    timestamp: f64,
+) -> Result<String, String> {
+    let ffmpeg_cmd = ffmpeg_path::get_ffmpeg_command(&app);
+    ffmpeg_handler::extract_frame_to_base64(&path, timestamp, &ffmpeg_cmd)
+        .map_err(|e| format!("Failed to extract frame: {}", e))
+}
+
 /// 裁剪视频
 #[tauri::command]
 pub async fn trim_video(

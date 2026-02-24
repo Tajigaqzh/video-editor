@@ -26,6 +26,7 @@ pub fn run() {
             commands::get_video_info,
             commands::extract_frame,
             commands::extract_frame_to_temp,
+            commands::extract_frame_to_base64,
             commands::trim_video,
             commands::merge_videos,
         ])

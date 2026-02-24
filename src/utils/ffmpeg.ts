@@ -32,8 +32,8 @@ export async function extractVideoFrame(path: string, timestamp: number): Promis
   console.log(`🎬 开始提取视频帧: ${path} @ ${timestamp.toFixed(2)}s`);
   const startTime = performance.now();
   
-  // 调用 Tauri 命令提取帧到临时文件
-  const tempFilePath = await invoke<string>('extract_frame_to_temp', { 
+  // 调用 Tauri 命令提取帧并返回 base64 data URL
+  const dataUrl = await invoke<string>('extract_frame_to_base64', { 
     path, 
     timestamp 
   });
@@ -41,8 +41,7 @@ export async function extractVideoFrame(path: string, timestamp: number): Promis
   const duration = performance.now() - startTime;
   console.log(`✅ 帧提取完成，耗时: ${duration.toFixed(0)}ms`);
   
-  // 转换为 asset:// 协议的 URL
-  return convertFileSrc(tempFilePath);
+  return dataUrl;
 }
 
 /**

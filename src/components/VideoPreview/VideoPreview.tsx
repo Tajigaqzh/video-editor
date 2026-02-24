@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Application, Container, Graphics, Text, TextStyle, Sprite, Texture } from 'pixi.js';
+import { Application, Container, Graphics, Text, TextStyle, Sprite, Texture, Assets } from 'pixi.js';
 import { useTimelineStore } from '@/store/timelineStore';
 import { extractVideoFrame } from '@/utils/ffmpeg';
 
@@ -24,6 +24,8 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const animationFrameRef = useRef<number | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: initialWidth, height: initialHeight });
+  const extractingRef = useRef<Set<string>>(new Set()); // 正在提取的帧
+  const lastRenderTimeRef = useRef<number>(0); // 上次渲染时间
   
   const { playheadPosition, clips, tracks, setPlayheadPosition } = useTimelineStore();
 
@@ -172,11 +174,16 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
   useEffect(() => {
     if (!isReady || !appRef.current || !videoLayerRef.current) return;
 
+    // 节流：限制渲染频率为 60fps (16.67ms)
+    const now = performance.now();
+    const timeSinceLastRender = now - lastRenderTimeRef.current;
+    if (timeSinceLastRender < 16.67) {
+      return; // 跳过此次渲染
+    }
+    lastRenderTimeRef.current = now;
+
     const videoLayer = videoLayerRef.current;
     
-    // Clear previous frame
-    videoLayer.removeChildren();
-
     // Get active clips at current playhead position
     const activeClips = clips.filter(clip => {
       const clipEnd = clip.startTime + clip.duration;
@@ -203,30 +210,38 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
         // 计算视频内的时间位置
         const clipTime = playheadPosition - topVideoClip.startTime;
         
-        // 生成缓存键
-        const cacheKey = `${topVideoClip.id}_${clipTime.toFixed(2)}`;
+        // 生成缓存键 - 降低精度到 0.1 秒，减少缓存数量
+        const cacheKey = `${topVideoClip.id}_${clipTime.toFixed(1)}`;
         
         // 检查缓存
         const cachedFrameUrl = frameCache.current.get(cacheKey);
         
         if (cachedFrameUrl) {
           // 使用缓存的帧
+          videoLayer.removeChildren();
           renderFrame(cachedFrameUrl, clipTime, topVideoClip.mediaId, videoLayer).catch(err => {
             console.error('Error rendering cached frame:', err);
           });
         } else {
-          // 显示加载状态
-          showLoadingState(topVideoClip.mediaId, videoLayer);
+          // 检查是否正在提取
+          if (extractingRef.current.has(cacheKey)) {
+            return; // 已在提取中，跳过
+          }
           
+          // 标记为正在提取
+          extractingRef.current.add(cacheKey);
+          
+          // 不清空画面，保持之前的帧
           // 异步提取帧
           extractVideoFrame(topVideoClip.filePath, clipTime)
             .then((frameUrl) => {
               // 缓存帧 URL
               frameCache.current.set(cacheKey, frameUrl);
+              extractingRef.current.delete(cacheKey);
               
-              // 立即渲染提取的帧（如果播放头位置没有变化）
+              // 立即渲染提取的帧（如果播放头位置没有变化太多）
               const currentClipTime = playheadPosition - topVideoClip.startTime;
-              if (Math.abs(currentClipTime - clipTime) < 0.1) {
+              if (Math.abs(currentClipTime - clipTime) < 0.2) {
                 videoLayer.removeChildren();
                 renderFrame(frameUrl, clipTime, topVideoClip.mediaId, videoLayer).catch(err => {
                   console.error('Error rendering extracted frame:', err);
@@ -235,79 +250,77 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
             })
             .catch((error) => {
               console.error('Failed to extract frame:', error);
-              showErrorState(topVideoClip.mediaId, videoLayer);
+              extractingRef.current.delete(cacheKey);
             });
         }
+        
+        // 预加载：提前加载接下来的 3 帧（0.3 秒）
+        if (isPlaying) {
+          for (let i = 1; i <= 3; i++) {
+            const futureTime = clipTime + (i * 0.1);
+            const futureKey = `${topVideoClip.id}_${futureTime.toFixed(1)}`;
+            
+            // 如果未缓存且未在提取中，则预加载
+            if (!frameCache.current.has(futureKey) && !extractingRef.current.has(futureKey)) {
+              extractingRef.current.add(futureKey);
+              
+              extractVideoFrame(topVideoClip.filePath, futureTime)
+                .then((frameUrl) => {
+                  frameCache.current.set(futureKey, frameUrl);
+                  extractingRef.current.delete(futureKey);
+                })
+                .catch((error) => {
+                  console.error('Failed to preload frame:', error);
+                  extractingRef.current.delete(futureKey);
+                });
+            }
+          }
+        }
       }
+    } else {
+      // 如果没有活动片段，清空画面
+      videoLayer.removeChildren();
     }
-    // 如果没有活动片段，不显示任何内容（保持黑色背景）
-  }, [playheadPosition, clips, tracks, isReady, canvasSize]);
+  }, [playheadPosition, clips, tracks, isReady, canvasSize, isPlaying]);
 
   // 渲染视频帧
   const renderFrame = async (frameUrl: string, clipTime: number, mediaId: string, videoLayer: Container) => {
     try {
-      console.log('🖼️ 渲染帧:', frameUrl);
+      console.log('🖼️ 渲染帧:', frameUrl.substring(0, 50) + '...');
       
       if (!frameUrl) {
         console.error('Frame URL is empty');
         return;
       }
       
-      // 如果是 asset:// 协议，需要通过 fetch 转换为 blob URL
-      let imageUrl = frameUrl;
-      if (frameUrl.startsWith('asset://') || frameUrl.startsWith('http://asset.localhost')) {
-        try {
-          const response = await fetch(frameUrl);
-          const blob = await response.blob();
-          imageUrl = URL.createObjectURL(blob);
-          console.log('✅ 转换为 blob URL:', imageUrl);
-        } catch (error) {
-          console.error('Failed to fetch asset:', error);
-          return;
-        }
-      }
-      
-      const texture = Texture.from(imageUrl);
+      // 使用 Assets.load 加载纹理（PixiJS v8 推荐方式）
+      const texture = await Assets.load(frameUrl);
       
       if (!texture) {
-        console.error('Failed to create texture from URL:', imageUrl);
+        console.error('Failed to load texture');
         return;
       }
       
       const sprite = new Sprite(texture);
       
+      // 调整大小和位置
+      if (texture.source && texture.source.width > 0 && texture.source.height > 0) {
+        const textureWidth = texture.source.width;
+        const textureHeight = texture.source.height;
+        
+        const scaleX = canvasSize.width / textureWidth;
+        const scaleY = canvasSize.height / textureHeight;
+        const scale = Math.min(scaleX, scaleY);
+        
+        sprite.scale.set(scale);
+        sprite.x = (canvasSize.width - textureWidth * scale) / 2;
+        sprite.y = (canvasSize.height - textureHeight * scale) / 2;
+        
+        console.log('✅ 帧渲染完成');
+      }
+      
       // 添加到场景
       videoLayer.addChild(sprite);
-      
-      // 等待纹理加载完成后调整大小和位置
-      const updateSpriteTransform = () => {
-        try {
-          if (texture.source && texture.source.width > 0 && texture.source.height > 0) {
-            const textureWidth = texture.source.width;
-            const textureHeight = texture.source.height;
-            
-            const scaleX = canvasSize.width / textureWidth;
-            const scaleY = canvasSize.height / textureHeight;
-            const scale = Math.min(scaleX, scaleY);
-            
-            sprite.scale.set(scale);
-            sprite.x = (canvasSize.width - textureWidth * scale) / 2;
-            sprite.y = (canvasSize.height - textureHeight * scale) / 2;
-            
-            console.log('✅ 帧渲染完成');
-          }
-        } catch (error) {
-          console.error('Error updating sprite transform:', error);
-        }
-      };
-      
-      // 监听纹理更新事件
-      texture.on('update', updateSpriteTransform);
-      
-      // 如果纹理已经加载，立即更新
-      if (texture.source && texture.source.width > 0) {
-        updateSpriteTransform();
-      }
       
       // 添加片段信息文本
       const clipStyle = new TextStyle({
@@ -409,8 +422,23 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
       const deltaTime = (currentTime - lastTime) / 1000; // 转换为秒
       lastTime = currentTime;
       
+      const newPosition = playheadPosition + deltaTime;
+      
+      // 检查是否到达最后一帧
+      // 获取所有片段的最大结束时间
+      const maxEndTime = clips.length > 0 
+        ? Math.max(...clips.map(clip => clip.startTime + clip.duration))
+        : 0;
+      
+      if (newPosition >= maxEndTime && maxEndTime > 0) {
+        // 到达末尾，停止播放
+        setPlayheadPosition(maxEndTime);
+        setIsPlaying(false);
+        return;
+      }
+      
       // 更新播放头位置
-      setPlayheadPosition(playheadPosition + deltaTime);
+      setPlayheadPosition(newPosition);
       
       animationFrameRef.current = requestAnimationFrame(animate);
     };
@@ -423,7 +451,7 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
         animationFrameRef.current = null;
       }
     };
-  }, [isPlaying, playheadPosition, setPlayheadPosition]);
+  }, [isPlaying, playheadPosition, setPlayheadPosition, clips]);
 
   // 键盘快捷键
   useEffect(() => {
