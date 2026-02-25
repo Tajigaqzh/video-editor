@@ -1,0 +1,188 @@
+{
+  "project": {
+    "metadata": {
+      "name": "压缩示例项目 - 幻灯片",
+      "version": "1.0.0",
+      "createdAt": "2024-02-25T10:00:00Z",
+      "modifiedAt": "2024-02-25T15:30:00Z",
+      "description": "展示重复压缩功能的示例项目"
+    },
+    "timeline": {
+      "fps": 30,
+      "resolution": {
+        "width": 1920,
+        "height": 1080
+      },
+      "totalDuration": 10,
+      "playheadPosition": 0,
+      "zoomLevel": 50
+    },
+    "mediaLibrary": {
+      "images": [
+        {
+          "id": "media_image_001",
+          "name": "slide_1.png",
+          "type": "image",
+          "path": "/images/slide_1.png",
+          "width": 1920,
+          "height": 1080,
+          "fileSize": 2097152,
+          "createdAt": "2024-02-25T10:00:00Z",
+          "thumbnailUrl": "cache://thumb_image_001.jpg"
+        },
+        {
+          "id": "media_image_002",
+          "name": "slide_2.png",
+          "type": "image",
+          "path": "/images/slide_2.png",
+          "width": 1920,
+          "height": 1080,
+          "fileSize": 2097152,
+          "createdAt": "2024-02-25T10:00:00Z",
+          "thumbnailUrl": "cache://thumb_image_002.jpg"
+        }
+      ]
+    },
+    "tracks": [
+      {
+        "id": "track_video_001",
+        "name": "幻灯片",
+        "type": "video",
+        "order": 1,
+        "height": 80,
+        "visible": true,
+        "locked": false,
+        "clips": [
+          {
+            "id": "clip_001",
+            "mediaId": "media_image_001",
+            "trackId": "track_video_001",
+            "startTime": 0,
+            "duration": 1,
+            "trimStart": 0,
+            "trimEnd": 1,
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "scale": {
+              "x": 1.0,
+              "y": 1.0
+            },
+            "rotation": 0,
+            "opacity": 1.0,
+            "effects": [
+              {
+                "id": "effect_001",
+                "type": "fade",
+                "enabled": true,
+                "startTime": 0,
+                "duration": 1,
+                "params": {
+                  "keyframes": [
+                    {
+                      "time": 0,
+                      "value": 0
+                    },
+                    {
+                      "time": 0.2,
+                      "value": 1
+                    },
+                    {
+                      "time": 0.8,
+                      "value": 1
+                    },
+                    {
+                      "time": 1,
+                      "value": 0
+                    }
+                  ]
+                }
+              }
+            ],
+            "repeatCount": 3,
+            "repeatMode": "sequential",
+            "originalClipIds": [
+              "clip_001",
+              "clip_002",
+              "clip_003"
+            ]
+          },
+          {
+            "id": "clip_004",
+            "mediaId": "media_image_002",
+            "trackId": "track_video_001",
+            "startTime": 3,
+            "duration": 1,
+            "trimStart": 0,
+            "trimEnd": 1,
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "scale": {
+              "x": 1.0,
+              "y": 1.0
+            },
+            "rotation": 0,
+            "opacity": 1.0,
+            "effects": [
+              {
+                "id": "effect_002",
+                "type": "fade",
+                "enabled": true,
+                "startTime": 0,
+                "duration": 1,
+                "params": {
+                  "keyframes": [
+                    {
+                      "time": 0,
+                      "value": 0
+                    },
+                    {
+                      "time": 0.2,
+                      "value": 1
+                    },
+                    {
+                      "time": 0.8,
+                      "value": 1
+                    },
+                    {
+                      "time": 1,
+                      "value": 0
+                    }
+                  ]
+                }
+              }
+            ],
+            "repeatCount": 7,
+            "repeatMode": "sequential",
+            "originalClipIds": [
+              "clip_004",
+              "clip_005",
+              "clip_006",
+              "clip_007",
+              "clip_008",
+              "clip_009",
+              "clip_010"
+            ]
+          }
+        ],
+        "transitions": []
+      }
+    ],
+    "tempFiles": {
+      "cacheDir": "/tmp/video-editor-cache",
+      "frameCaches": [],
+      "lastCleanup": "2024-02-25T15:00:00Z"
+    }
+  },
+  "compressionInfo": {
+    "enabled": true,
+    "originalClipCount": 10,
+    "compressedClipCount": 2,
+    "compressionRatio": 0.2,
+    "savedBytes": 8192,
+    "description": "10个相同的图片Clips被压缩为2个带重复计数的Clips"
+  }
+}

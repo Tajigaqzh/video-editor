@@ -262,3 +262,97 @@ mod tests {
         assert_eq!(parse_fps("invalid"), 0.0);
     }
 }
+
+/// 批量提取视频帧
+pub fn batch_extract_frames(
+    path: &str,
+    timestamps: Vec<f64>,
+    output_dir: &str,
+    ffmpeg_cmd: &str,
+) -> Result<()> {
+    use std::fs;
+    use std::path::Path;
+
+    // 创建输出目录
+    fs::create_dir_all(output_dir)
+        .context("Failed to create output directory")?;
+
+    // 如果没有时间戳，直接返回
+    if timestamps.is_empty() {
+        return Ok(());
+    }
+
+    // 使用 FFmpeg 的 fps filter 一次性提取所有帧
+    let fps = if timestamps.len() > 1 {
+        let max_timestamp = timestamps.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        if max_timestamp > 0.0 {
+            timestamps.len() as f64 / max_timestamp
+        } else {
+            1.0
+        }
+    } else {
+        1.0
+    };
+
+    // 生成输出文件名模式（使用 %04d 确保文件名一致）
+    let output_pattern = if output_dir.ends_with('/') || output_dir.ends_with('\\') {
+        format!("{}frame_%04d.jpg", output_dir)
+    } else {
+        format!("{}/frame_%04d.jpg", output_dir)
+    };
+
+    let status = Command::new(ffmpeg_cmd)
+        .args([
+            "-i", path,
+            "-vf", &format!("fps={},scale=640:-1", fps),
+            "-q:v", "8",
+            "-y",
+            &output_pattern,
+        ])
+        .status()
+        .context("Failed to execute ffmpeg command")?;
+
+    if !status.success() {
+        anyhow::bail!("FFmpeg batch extract command failed");
+    }
+
+    // 重命名文件为指定的时间戳格式
+    let output_path = Path::new(output_dir);
+    let mut frame_index = 0;
+
+    if let Ok(entries) = fs::read_dir(output_path) {
+        let mut files: Vec<_> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s == "jpg")
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        // 按文件名排序
+        files.sort_by_key(|e| e.path());
+
+        for entry in files {
+            let path = entry.path();
+            if frame_index < timestamps.len() {
+                let timestamp = timestamps[frame_index];
+                let new_name = format!("frame_{:.1}.jpg", timestamp);
+                let new_path = output_path.join(&new_name);
+
+                // 如果新文件已存在，先删除
+                let _ = fs::remove_file(&new_path);
+
+                if let Err(e) = fs::rename(&path, &new_path) {
+                    eprintln!("Warning: Failed to rename frame file: {}", e);
+                }
+
+                frame_index += 1;
+            }
+        }
+    }
+
+    Ok(())
+}

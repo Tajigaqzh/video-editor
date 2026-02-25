@@ -1,0 +1,332 @@
+{
+  "project": {
+    "metadata": {
+      "name": "完整示例视频编辑项目",
+      "version": "1.0.0",
+      "createdAt": "2024-02-25T10:00:00Z",
+      "modifiedAt": "2024-02-25T15:30:00Z",
+      "description": "这是一个包含所有功能的完整示例项目"
+    },
+    "timeline": {
+      "fps": 30,
+      "resolution": {
+        "width": 1920,
+        "height": 1080
+      },
+      "totalDuration": 15.5,
+      "playheadPosition": 0,
+      "zoomLevel": 50
+    },
+    "mediaLibrary": {
+      "videos": [
+        {
+          "id": "media_video_001",
+          "name": "intro.mp4",
+          "type": "video",
+          "path": "/videos/intro.mp4",
+          "duration": 5.0,
+          "width": 1920,
+          "height": 1080,
+          "fps": 30,
+          "codec": "h264",
+          "fileSize": 52428800,
+          "createdAt": "2024-02-25T09:00:00Z",
+          "thumbnailUrl": "cache://thumb_video_001.jpg"
+        }
+      ],
+      "audios": [
+        {
+          "id": "media_audio_001",
+          "name": "background_music.mp3",
+          "type": "audio",
+          "path": "/audios/background_music.mp3",
+          "duration": 15.5,
+          "sampleRate": 44100,
+          "channels": 2,
+          "codec": "mp3",
+          "fileSize": 1048576,
+          "createdAt": "2024-02-25T09:45:00Z"
+        }
+      ],
+      "images": [
+        {
+          "id": "media_image_001",
+          "name": "logo.png",
+          "type": "image",
+          "path": "/images/logo.png",
+          "width": 512,
+          "height": 512,
+          "fileSize": 262144,
+          "createdAt": "2024-02-25T10:15:00Z",
+          "thumbnailUrl": "cache://thumb_image_001.jpg"
+        }
+      ]
+    },
+    "tracks": [
+      {
+        "id": "track_video_001",
+        "name": "视频 1",
+        "type": "video",
+        "order": 3,
+        "height": 80,
+        "visible": true,
+        "locked": false,
+        "clips": [
+          {
+            "id": "clip_001",
+            "mediaId": "media_video_001",
+            "trackId": "track_video_001",
+            "startTime": 0,
+            "duration": 5.0,
+            "trimStart": 0,
+            "trimEnd": 5.0,
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "scale": {
+              "x": 1.0,
+              "y": 1.0
+            },
+            "rotation": 0,
+            "opacity": 1.0,
+            "keyframes": [
+              {
+                "time": 0,
+                "properties": {
+                  "x": 0,
+                  "y": 0,
+                  "scale": 1.0,
+                  "opacity": 1.0,
+                  "rotation": 0
+                },
+                "easing": "linear"
+              },
+              {
+                "time": 2.5,
+                "properties": {
+                  "x": 50,
+                  "y": 25,
+                  "scale": 1.1,
+                  "opacity": 0.9,
+                  "rotation": 5
+                },
+                "easing": "easeInOut"
+              },
+              {
+                "time": 5,
+                "properties": {
+                  "x": 0,
+                  "y": 0,
+                  "scale": 1.0,
+                  "opacity": 1.0,
+                  "rotation": 0
+                },
+                "easing": "easeOut"
+              }
+            ],
+            "effects": [
+              {
+                "id": "effect_001",
+                "type": "brightness",
+                "enabled": true,
+                "startTime": 0,
+                "duration": 5,
+                "params": {
+                  "value": 1.1,
+                  "keyframes": [
+                    {
+                      "time": 0,
+                      "value": 1.0
+                    },
+                    {
+                      "time": 2.5,
+                      "value": 1.2
+                    },
+                    {
+                      "time": 5,
+                      "value": 1.0
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "effect_002",
+                "type": "contrast",
+                "enabled": true,
+                "startTime": 0,
+                "duration": 5,
+                "params": {
+                  "value": 1.15
+                }
+              }
+            ]
+          }
+        ],
+        "transitions": []
+      },
+      {
+        "id": "track_audio_001",
+        "name": "音频 1",
+        "type": "audio",
+        "order": 2,
+        "height": 60,
+        "visible": true,
+        "locked": false,
+        "clips": [
+          {
+            "id": "clip_audio_001",
+            "mediaId": "media_audio_001",
+            "trackId": "track_audio_001",
+            "startTime": 0,
+            "duration": 15.5,
+            "trimStart": 0,
+            "trimEnd": 15.5,
+            "volume": 0.8,
+            "balance": 0,
+            "effects": [
+              {
+                "id": "audio_effect_001",
+                "type": "volume",
+                "enabled": true,
+                "startTime": 0,
+                "duration": 15.5,
+                "params": {
+                  "volume": 0.8,
+                  "keyframes": [
+                    {
+                      "time": 0,
+                      "value": 0
+                    },
+                    {
+                      "time": 1,
+                      "value": 0.8
+                    },
+                    {
+                      "time": 14.5,
+                      "value": 0.8
+                    },
+                    {
+                      "time": 15.5,
+                      "value": 0
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "transitions": []
+      },
+      {
+        "id": "track_text_001",
+        "name": "字幕",
+        "type": "text",
+        "order": 1,
+        "visible": true,
+        "locked": false,
+        "clips": [
+          {
+            "id": "text_clip_001",
+            "trackId": "track_text_001",
+            "startTime": 0,
+            "duration": 3,
+            "content": "欢迎观看",
+            "style": {
+              "fontFamily": "Arial",
+              "fontSize": 48,
+              "fontWeight": "bold",
+              "color": "#FFFFFF",
+              "backgroundColor": "rgba(0,0,0,0.5)",
+              "textAlign": "center",
+              "position": {
+                "x": 960,
+                "y": 540
+              }
+            }
+          },
+          {
+            "id": "text_clip_002",
+            "trackId": "track_text_001",
+            "startTime": 5,
+            "duration": 5,
+            "content": "精彩内容",
+            "style": {
+              "fontFamily": "Arial",
+              "fontSize": 40,
+              "fontWeight": "normal",
+              "color": "#FFFF00",
+              "backgroundColor": "rgba(0,0,0,0.3)",
+              "textAlign": "center",
+              "position": {
+                "x": 960,
+                "y": 100
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "exportConfig": {
+      "format": "mp4",
+      "codec": "h264",
+      "bitrate": "5000k",
+      "fps": 30,
+      "resolution": {
+        "width": 1920,
+        "height": 1080
+      },
+      "audioCodec": "aac",
+      "audioBitrate": "192k",
+      "audioSampleRate": 48000,
+      "quality": "high"
+    },
+    "settings": {
+      "autoSave": true,
+      "autoSaveInterval": 300,
+      "snapToGrid": true,
+      "snapThreshold": 5,
+      "showRuler": true,
+      "showGuides": true,
+      "defaultTransitionDuration": 0.5,
+      "defaultClipDuration": 5,
+      "theme": "dark"
+    },
+    "history": {
+      "undoStack": [
+        {
+          "id": "action_001",
+          "type": "addClip",
+          "timestamp": "2024-02-25T10:00:00Z",
+          "data": {
+            "clipId": "clip_001",
+            "trackId": "track_video_001"
+          }
+        },
+        {
+          "id": "action_002",
+          "type": "addEffect",
+          "timestamp": "2024-02-25T10:05:00Z",
+          "data": {
+            "effectId": "effect_001",
+            "clipId": "clip_001"
+          }
+        }
+      ],
+      "redoStack": [],
+      "maxHistorySize": 100
+    },
+    "tempFiles": {
+      "cacheDir": "/tmp/video-editor-cache",
+      "frameCaches": [
+        {
+          "clipId": "clip_001",
+          "cacheDir": "/tmp/video-editor-cache/clips/clip_001",
+          "frameCount": 150,
+          "frameInterval": 0.1
+        }
+      ],
+      "lastCleanup": "2024-02-25T15:00:00Z"
+    }
+  }
+}

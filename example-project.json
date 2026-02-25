@@ -1,0 +1,277 @@
+{
+  "project": {
+    "metadata": {
+      "name": "示例视频编辑项目",
+      "version": "1.0.0",
+      "createdAt": "2024-02-25T10:00:00Z",
+      "modifiedAt": "2024-02-25T15:30:00Z",
+      "description": "这是一个示例视频编辑项目"
+    },
+    "timeline": {
+      "fps": 30,
+      "resolution": {
+        "width": 1920,
+        "height": 1080
+      },
+      "totalDuration": 15.5,
+      "playheadPosition": 0,
+      "zoomLevel": 50
+    },
+    "mediaLibrary": {
+      "videos": [
+        {
+          "id": "media_video_001",
+          "name": "intro.mp4",
+          "type": "video",
+          "path": "/videos/intro.mp4",
+          "duration": 5.0,
+          "width": 1920,
+          "height": 1080,
+          "fps": 30,
+          "codec": "h264",
+          "fileSize": 52428800,
+          "createdAt": "2024-02-25T09:00:00Z",
+          "thumbnailUrl": "cache://thumb_video_001.jpg"
+        },
+        {
+          "id": "media_video_002",
+          "name": "main.mp4",
+          "type": "video",
+          "path": "/videos/main.mp4",
+          "duration": 8.5,
+          "width": 1920,
+          "height": 1080,
+          "fps": 30,
+          "codec": "h264",
+          "fileSize": 89128960,
+          "createdAt": "2024-02-25T09:15:00Z",
+          "thumbnailUrl": "cache://thumb_video_002.jpg"
+        },
+        {
+          "id": "media_video_003",
+          "name": "outro.mp4",
+          "type": "video",
+          "path": "/videos/outro.mp4",
+          "duration": 3.0,
+          "width": 1920,
+          "height": 1080,
+          "fps": 30,
+          "codec": "h264",
+          "fileSize": 31457280,
+          "createdAt": "2024-02-25T09:30:00Z",
+          "thumbnailUrl": "cache://thumb_video_003.jpg"
+        }
+      ],
+      "audios": [
+        {
+          "id": "media_audio_001",
+          "name": "background_music.mp3",
+          "type": "audio",
+          "path": "/audios/background_music.mp3",
+          "duration": 15.5,
+          "sampleRate": 44100,
+          "channels": 2,
+          "codec": "mp3",
+          "fileSize": 1048576,
+          "createdAt": "2024-02-25T09:45:00Z"
+        },
+        {
+          "id": "media_audio_002",
+          "name": "voiceover.wav",
+          "type": "audio",
+          "path": "/audios/voiceover.wav",
+          "duration": 8.0,
+          "sampleRate": 48000,
+          "channels": 1,
+          "codec": "pcm",
+          "fileSize": 768000,
+          "createdAt": "2024-02-25T10:00:00Z"
+        }
+      ],
+      "images": [
+        {
+          "id": "media_image_001",
+          "name": "logo.png",
+          "type": "image",
+          "path": "/images/logo.png",
+          "width": 512,
+          "height": 512,
+          "fileSize": 262144,
+          "createdAt": "2024-02-25T10:15:00Z",
+          "thumbnailUrl": "cache://thumb_image_001.jpg"
+        }
+      ]
+    },
+    "tracks": [
+      {
+        "id": "track_video_001",
+        "name": "视频 1",
+        "type": "video",
+        "order": 2,
+        "height": 80,
+        "visible": true,
+        "locked": false,
+        "clips": [
+          {
+            "id": "clip_001",
+            "mediaId": "media_video_001",
+            "trackId": "track_video_001",
+            "startTime": 0,
+            "duration": 5.0,
+            "trimStart": 0,
+            "trimEnd": 5.0,
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "scale": {
+              "x": 1.0,
+              "y": 1.0
+            },
+            "rotation": 0,
+            "opacity": 1.0,
+            "effects": [
+              {
+                "id": "effect_001",
+                "type": "brightness",
+                "params": {
+                  "value": 1.1
+                }
+              }
+            ]
+          },
+          {
+            "id": "clip_002",
+            "mediaId": "media_video_002",
+            "trackId": "track_video_001",
+            "startTime": 6.0,
+            "duration": 8.5,
+            "trimStart": 0,
+            "trimEnd": 8.5,
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "scale": {
+              "x": 1.0,
+              "y": 1.0
+            },
+            "rotation": 0,
+            "opacity": 1.0,
+            "effects": []
+          }
+        ],
+        "transitions": [
+          {
+            "id": "transition_001",
+            "type": "fade",
+            "duration": 0.5,
+            "fromClipId": "clip_001",
+            "toClipId": "clip_002",
+            "params": {
+              "easing": "easeInOut"
+            }
+          }
+        ]
+      },
+      {
+        "id": "track_video_002",
+        "name": "视频 2",
+        "type": "video",
+        "order": 1,
+        "height": 80,
+        "visible": true,
+        "locked": false,
+        "clips": [
+          {
+            "id": "clip_003",
+            "mediaId": "media_image_001",
+            "trackId": "track_video_002",
+            "startTime": 14.5,
+            "duration": 1.0,
+            "trimStart": 0,
+            "trimEnd": 1.0,
+            "position": {
+              "x": 704,
+              "y": 284
+            },
+            "scale": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "rotation": 0,
+            "opacity": 0.8,
+            "effects": []
+          }
+        ],
+        "transitions": []
+      },
+      {
+        "id": "track_audio_001",
+        "name": "音频 1",
+        "type": "audio",
+        "order": 1,
+        "height": 60,
+        "visible": true,
+        "locked": false,
+        "clips": [
+          {
+            "id": "clip_audio_001",
+            "mediaId": "media_audio_001",
+            "trackId": "track_audio_001",
+            "startTime": 0,
+            "duration": 15.5,
+            "trimStart": 0,
+            "trimEnd": 15.5,
+            "volume": 0.8,
+            "balance": 0,
+            "effects": []
+          }
+        ],
+        "transitions": []
+      },
+      {
+        "id": "track_audio_002",
+        "name": "音频 2",
+        "type": "audio",
+        "order": 2,
+        "height": 60,
+        "visible": true,
+        "locked": false,
+        "clips": [
+          {
+            "id": "clip_audio_002",
+            "mediaId": "media_audio_002",
+            "trackId": "track_audio_002",
+            "startTime": 2.0,
+            "duration": 8.0,
+            "trimStart": 0,
+            "trimEnd": 8.0,
+            "volume": 1.0,
+            "balance": 0,
+            "effects": []
+          }
+        ],
+        "transitions": []
+      }
+    ],
+    "tempFiles": {
+      "cacheDir": "/tmp/video-editor-cache",
+      "frameCaches": [
+        {
+          "clipId": "clip_001",
+          "cacheDir": "/tmp/video-editor-cache/clips/clip_001",
+          "frameCount": 150,
+          "frameInterval": 0.1
+        },
+        {
+          "clipId": "clip_002",
+          "cacheDir": "/tmp/video-editor-cache/clips/clip_002",
+          "frameCount": 255,
+          "frameInterval": 0.1
+        }
+      ],
+      "lastCleanup": "2024-02-25T15:00:00Z"
+    }
+  }
+}

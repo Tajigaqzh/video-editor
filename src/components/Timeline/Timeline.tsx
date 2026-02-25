@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useTimelineStore } from '@/store/timelineStore';
 import TimelineToolbar from './TimelineToolbar';
 import Timescale from './Timescale';
@@ -26,15 +27,15 @@ const Timeline = React.forwardRef<TimelineRef, TimelineProps>(
     
     // Connect to timeline store
     const {
-      tracks,
-      clips,
+      project,
       zoomLevel,
       addTrack,
       removeTrack,
       setPlayheadPosition,
       getTotalDuration,
-      getClipsByTrack,
     } = useTimelineStore();
+
+    const tracks = project.tracks;
 
     // Calculate total duration for timeline
     const totalDuration = getTotalDuration();
@@ -104,12 +105,16 @@ const Timeline = React.forwardRef<TimelineRef, TimelineProps>(
         console.log('Parsed drag data:', dragData);
         
         // 检查是拖动片段还是从素材库拖入新素材
-        if (dragData.type === 'clip') {
+        const dragType = dragData.dragType || 'media'; // 默认为 'media'
+        
+        if (dragType === 'clip') {
           // 拖动现有片段
           handleClipMove(dragData, e, trackId);
-        } else {
+        } else if (dragType === 'media') {
           // 从素材库拖入新素材
           handleMediaDrop(dragData, e, trackId);
+        } else {
+          console.warn('Unknown drag type:', dragType);
         }
       } catch (error) {
         console.error('❌ Error handling drop:', error);
@@ -118,7 +123,7 @@ const Timeline = React.forwardRef<TimelineRef, TimelineProps>(
 
     // 处理片段移动
     const handleClipMove = (dragData: any, e: React.DragEvent, targetTrackId: string) => {
-      const { clipId, trackId: sourceTrackId } = dragData;
+      const { clipId } = dragData;
       
       // 计算新的开始时间
       const scrollLeft = scrollContainerRef.current?.scrollLeft || 0;
@@ -143,7 +148,9 @@ const Timeline = React.forwardRef<TimelineRef, TimelineProps>(
     };
 
     // 处理从素材库拖入新素材
-    const handleMediaDrop = (mediaItem: any, e: React.DragEvent, trackId: string) => {
+    const handleMediaDrop = async (mediaItem: any, e: React.DragEvent, trackId: string): Promise<void> => {
+      console.log('📥 handleMediaDrop called with mediaItem:', mediaItem);
+      
       // 只处理视频和音频文件
       if (mediaItem.type !== 'video' && mediaItem.type !== 'audio') {
         console.warn('只支持视频和音频文件，当前类型:', mediaItem.type);
@@ -166,7 +173,7 @@ const Timeline = React.forwardRef<TimelineRef, TimelineProps>(
       
       // 计算拖放位置对应的时间
       // 如果轨道是空的，自动放在 00:00 位置
-      const trackClips = clips.filter(c => c.trackId === trackId);
+      const trackClips = track.clips;
       let dropTime = 0;
       
       if (trackClips.length > 0) {
@@ -196,24 +203,83 @@ const Timeline = React.forwardRef<TimelineRef, TimelineProps>(
         console.log('Empty track, placing clip at 00:00');
       }
       
-      // 创建新的片段
-      const { addClip } = useTimelineStore.getState();
-      addClip({
-        trackId,
-        mediaId: mediaItem.name,
-        startTime: dropTime,
-        duration: 5, // 默认5秒，实际应该从视频元数据获取
-        trimStart: 0,
-        trimEnd: 5,
-        thumbnailUrl: mediaItem.url,
-        filePath: mediaItem.path, // 保存原始文件路径
-      });
+      // 获取视频信息并添加媒体到 store
+      let duration = 5;
+      const { addMedia, addClip } = useTimelineStore.getState();
       
-      console.log('✅ Clip added successfully:', mediaItem.name, 'at', dropTime, 'path:', mediaItem.path);
+      try {
+        const videoInfo = await invoke<any>('get_video_info', {
+          path: mediaItem.path,
+        });
+        duration = videoInfo.duration || 5;
+        
+        // 检查媒体是否已在 store 中
+        const existingMedia = project.media.find(m => m.id === mediaItem.id);
+        if (!existingMedia) {
+          // 添加媒体到 store
+          const newMedia = {
+            id: mediaItem.id,
+            name: mediaItem.name,
+            type: mediaItem.type as any,
+            path: mediaItem.path,
+            originalPath: mediaItem.path,
+            duration,
+            width: videoInfo.width,
+            height: videoInfo.height,
+            fps: videoInfo.fps,
+            codec: videoInfo.codec,
+            fileSize: videoInfo.file_size || 0,
+            createdAt: new Date().toISOString(),
+            sampleRate: videoInfo.sample_rate,
+            channels: videoInfo.channels,
+          };
+          addMedia(newMedia);
+          console.log('✅ Media added to store:', mediaItem.name);
+        }
+      } catch (err) {
+        console.warn('Failed to get video info:', err);
+      }
+      
+      const newClip = {
+        id: `clip_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        trackId,
+        mediaId: mediaItem.id, // 使用媒体 ID
+        startTime: dropTime,
+        duration,
+        trimStart: 0,
+        trimEnd: duration,
+        position: { x: 0, y: 0 },      // HPVE 格式
+        scale: { x: 1.0, y: 1.0 },     // HPVE 格式
+        rotation: 0,                     // HPVE 格式
+        opacity: 1.0,                    // HPVE 格式
+        effects: [],                     // HPVE 格式
+      };
+      
+      console.log('📋 Creating clip with mediaId:', mediaItem.id);
+      console.log('📋 Full clip data:', newClip);
+      
+      addClip(newClip);
+      
+      console.log('✅ Clip added successfully:', mediaItem.name, 'at', dropTime);
+      console.log('📋 Clip data:', newClip);
+      
+      // 立即抽取第一帧用于预览（仅视频轨道）
+      if (track.type === 'video') {
+        console.log('🎬 抽取第一帧用于预览:', mediaItem.name);
+        try {
+          await invoke<string>('stream_decode_frame', {
+            path: mediaItem.path,
+            timestamp: 0, // 抽取第一帧
+          });
+          console.log('✅ 第一帧抽取成功');
+        } catch (err) {
+          console.error('❌ 第一帧抽取失败:', err);
+        }
+      }
     };
 
     // Handle drop on timeline container (fallback)
-    const handleTimelineDrop = (e: React.DragEvent) => {
+    const handleTimelineDrop = () => {
       console.log('Timeline container drop event');
       // Let it bubble to track handlers
     };
@@ -313,7 +379,7 @@ const Timeline = React.forwardRef<TimelineRef, TimelineProps>(
                     <Track
                       key={track.id}
                       track={track}
-                      clips={getClipsByTrack(track.id)}
+                      clips={track.clips}
                       zoomLevel={zoomLevel}
                       onDrop={handleTrackDrop}
                     />

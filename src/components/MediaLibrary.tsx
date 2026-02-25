@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { ALL_SUPPORT_MEDIA_EXTENSIONS } from "@/constants/media";
 import { getFileType, getFileName } from "@/hooks/useMediaFile";
+import { useTimelineStore, type Media, type MediaType } from "@/store/timelineStore";
 import {
   type MediaFile,
   type MediaFolder,
@@ -62,6 +63,38 @@ export default function MediaLibrary() {
         }));
         
         setMediaItems(prev => addItemsToFolder(prev, currentFolder, newFiles));
+        
+        // 同时添加到 store 中
+        const { addMedia } = useTimelineStore.getState();
+        for (const file of newFiles) {
+          try {
+            const videoInfo = await invoke<any>('get_video_info', {
+              path: file.path,
+            });
+            
+            const media: Media = {
+              id: file.id,
+              name: file.name,
+              type: file.type as MediaType,
+              path: file.path,
+              originalPath: file.path,
+              duration: videoInfo.duration || 0,
+              width: videoInfo.width,
+              height: videoInfo.height,
+              fps: videoInfo.fps,
+              codec: videoInfo.codec,
+              fileSize: videoInfo.file_size || 0,
+              createdAt: new Date().toISOString(),
+              sampleRate: videoInfo.sample_rate,
+              channels: videoInfo.channels,
+            };
+            
+            addMedia(media);
+            console.log('✅ Media added to store:', file.name);
+          } catch (err) {
+            console.error('Failed to get video info for', file.name, ':', err);
+          }
+        }
       }
     } catch (error) {
       console.error("Error selecting files:", error);
@@ -328,7 +361,10 @@ export default function MediaLibrary() {
                       draggable
                       onDragStart={(e) => {
                         e.dataTransfer.effectAllowed = 'copy';
-                        e.dataTransfer.setData("application/json", JSON.stringify(item));
+                        e.dataTransfer.setData("application/json", JSON.stringify({
+                          ...item,
+                          dragType: 'media',
+                        }));
                         console.log('Drag start:', item);
                       }}
                       onDragEnd={(e) => {

@@ -200,7 +200,7 @@ const Track: React.FC<TrackProps> = ({ track, clips, zoomLevel, onDrop }) => {
               e.stopPropagation();
               e.dataTransfer.effectAllowed = 'move';
               e.dataTransfer.setData('application/json', JSON.stringify({
-                type: 'clip',
+                dragType: 'clip',
                 clipId: clip.id,
                 trackId: track.id,
                 startTime: clip.startTime,

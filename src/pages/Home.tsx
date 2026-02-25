@@ -44,7 +44,7 @@ function Home() {
               <div className="px-4 py-3 border-b border-gray-700">
                 <h2 className="text-white font-semibold">属性</h2>
               </div>
-              <div className="flex-1 overflow-auto">
+              <div className="flex-1 overflow-auto flex items-center justify-center">
                 {/* 属性面板内容区域 */}
               </div>
             </div>
