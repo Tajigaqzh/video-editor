@@ -569,7 +569,7 @@ describe('Spy 示例', () => {
 
 ```typescript
 import { describe, it, expect, vi } from 'vitest';
-import * as mediaUtils from '@/utils/mediaOperations';
+import * as mediaUtils from '@/utils/media/mediaOperations';
 
 describe('部分 Mock 模块', () => {
   it('should partially mock module', () => {
@@ -663,7 +663,7 @@ describe('MediaLibrary - Mock 数据', () => {
 **Mock 数据文件示例** (`test/utils/mockData.ts`):
 
 ```typescript
-import type { MediaFile, MediaFolder } from '@/utils/mediaOperations';
+import type { MediaFile, MediaFolder } from '@/utils/media/mediaOperations';
 
 export const mockVideoFile: MediaFile = {
   id: 'video-1',
@@ -795,3 +795,4 @@ pnpm test:coverage
 - [测试指南](./README.md)
 - [最佳实践](./BEST_PRACTICES.md)
 - [故障排查](./TROUBLESHOOTING.md)
+

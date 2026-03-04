@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import { devtools, persist } from 'zustand/middleware';
+import { create } from "zustand";
+import { devtools, persist } from "zustand/middleware";
 
 interface AppState {
   user: { name: string } | null;
@@ -14,8 +14,8 @@ export const useStore = create<AppState>()(
         setUser: (user) => set({ user }),
       }),
       {
-        name: 'app-storage',
-      }
-    )
-  )
+        name: "app-storage",
+      },
+    ),
+  ),
 );

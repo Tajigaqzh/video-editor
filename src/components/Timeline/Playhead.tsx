@@ -1,6 +1,6 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { useTimelineStore } from '@/store/timelineStore';
-import { formatTime } from '@/utils/timelineUtils';
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useTimelineStore } from "@/store/timelineStore";
+import { formatTime } from "@/utils/timeline/timelineUtils";
 
 interface PlayheadProps {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -15,6 +15,7 @@ const Playhead: React.FC<PlayheadProps> = ({ scrollContainerRef, timelineBodyRef
 
   // Calculate playhead position in pixels (加上 120px 轨道头部偏移)
   const playheadX = playheadPosition * zoomLevel + 120;
+  const playheadCenterX = playheadX + 1; // line is 2px wide
 
   // Handle playhead drag start
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -23,6 +24,27 @@ const Playhead: React.FC<PlayheadProps> = ({ scrollContainerRef, timelineBodyRef
     setIsDragging(true);
     setShowTooltip(true);
   };
+
+  // Auto-scroll to keep playhead visible (Requirement 5.5)
+  const autoScrollToPlayhead = useCallback(
+    (playheadPixelX: number, currentScrollLeft: number) => {
+      if (!scrollContainerRef.current) return;
+
+      const container = scrollContainerRef.current;
+      const viewportWidth = container.clientWidth;
+      const scrollThreshold = 50; // Pixels from edge to trigger scroll
+
+      // Check if playhead is near right edge
+      if (playheadPixelX - currentScrollLeft > viewportWidth - scrollThreshold) {
+        container.scrollLeft = playheadPixelX - viewportWidth + scrollThreshold;
+      }
+      // Check if playhead is near left edge
+      else if (playheadPixelX - currentScrollLeft < scrollThreshold) {
+        container.scrollLeft = Math.max(0, playheadPixelX - scrollThreshold);
+      }
+    },
+    [scrollContainerRef],
+  );
 
   // Handle playhead dragging
   useEffect(() => {
@@ -35,7 +57,7 @@ const Playhead: React.FC<PlayheadProps> = ({ scrollContainerRef, timelineBodyRef
       const scrollLeft = scrollContainerRef.current.scrollLeft;
       const bodyRect = timelineBodyRef.current.getBoundingClientRect();
       const mouseX = e.clientX - bodyRect.left + scrollLeft - 120; // 减去 120px 轨道头部偏移
-      
+
       // Convert pixels to time
       const newTime = Math.max(0, mouseX / zoomLevel);
       setPlayheadPosition(newTime);
@@ -49,32 +71,21 @@ const Playhead: React.FC<PlayheadProps> = ({ scrollContainerRef, timelineBodyRef
       setShowTooltip(false);
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isDragging, zoomLevel, setPlayheadPosition, scrollContainerRef, timelineBodyRef]);
-
-  // Auto-scroll to keep playhead visible (Requirement 5.5)
-  const autoScrollToPlayhead = (playheadPixelX: number, currentScrollLeft: number) => {
-    if (!scrollContainerRef.current) return;
-
-    const container = scrollContainerRef.current;
-    const viewportWidth = container.clientWidth;
-    const scrollThreshold = 50; // Pixels from edge to trigger scroll
-
-    // Check if playhead is near right edge
-    if (playheadPixelX - currentScrollLeft > viewportWidth - scrollThreshold) {
-      container.scrollLeft = playheadPixelX - viewportWidth + scrollThreshold;
-    }
-    // Check if playhead is near left edge
-    else if (playheadPixelX - currentScrollLeft < scrollThreshold) {
-      container.scrollLeft = Math.max(0, playheadPixelX - scrollThreshold);
-    }
-  };
+  }, [
+    autoScrollToPlayhead,
+    isDragging,
+    setPlayheadPosition,
+    scrollContainerRef,
+    timelineBodyRef,
+    zoomLevel,
+  ]);
 
   // Handle mouse enter/leave for tooltip
   const handleMouseEnter = () => {
@@ -96,15 +107,15 @@ const Playhead: React.FC<PlayheadProps> = ({ scrollContainerRef, timelineBodyRef
         ref={playheadRef}
         className="playhead-line"
         style={{
-          position: 'absolute',
+          position: "absolute",
           left: `${playheadX}px`,
           top: 0,
           bottom: 0,
-          width: '2px',
-          backgroundColor: '#ff0000',
+          width: "2px",
+          backgroundColor: "#ff0000",
           zIndex: 5,
-          cursor: isDragging ? 'grabbing' : 'grab',
-          pointerEvents: 'auto',
+          cursor: isDragging ? "grabbing" : "grab",
+          pointerEvents: "auto",
         }}
         onMouseDown={handleMouseDown}
         onMouseEnter={handleMouseEnter}
@@ -114,17 +125,17 @@ const Playhead: React.FC<PlayheadProps> = ({ scrollContainerRef, timelineBodyRef
       {/* Playhead handle (top triangle) */}
       <div
         style={{
-          position: 'absolute',
-          left: `${playheadX - 6}px`,
+          position: "absolute",
+          left: `${playheadCenterX - 6}px`,
           top: 0,
           width: 0,
           height: 0,
-          borderLeft: '6px solid transparent',
-          borderRight: '6px solid transparent',
-          borderTop: '8px solid #ff0000',
+          borderLeft: "6px solid transparent",
+          borderRight: "6px solid transparent",
+          borderTop: "8px solid #ff0000",
           zIndex: 6,
-          cursor: isDragging ? 'grabbing' : 'grab',
-          pointerEvents: 'auto',
+          cursor: isDragging ? "grabbing" : "grab",
+          pointerEvents: "auto",
         }}
         onMouseDown={handleMouseDown}
         onMouseEnter={handleMouseEnter}
@@ -135,18 +146,18 @@ const Playhead: React.FC<PlayheadProps> = ({ scrollContainerRef, timelineBodyRef
       {showTooltip && (
         <div
           style={{
-            position: 'absolute',
+            position: "absolute",
             left: `${playheadX}px`,
-            top: '12px',
-            transform: 'translateX(-50%)',
-            backgroundColor: 'rgba(0, 0, 0, 0.9)',
-            color: '#ffffff',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            fontSize: '12px',
-            whiteSpace: 'nowrap',
+            top: "12px",
+            transform: "translateX(-50%)",
+            backgroundColor: "rgba(0, 0, 0, 0.9)",
+            color: "#ffffff",
+            padding: "4px 8px",
+            borderRadius: "4px",
+            fontSize: "12px",
+            whiteSpace: "nowrap",
             zIndex: 7,
-            pointerEvents: 'none',
+            pointerEvents: "none",
           }}
         >
           {formatTime(playheadPosition)}

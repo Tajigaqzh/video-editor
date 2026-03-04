@@ -1,17 +1,21 @@
-import { create } from 'zustand';
+import { create } from "zustand";
 
 // ============ HPVE 规范数据结构 ============
 
-export type TrackType = 'video' | 'audio' | 'text';
-export type MediaType = 'video' | 'audio' | 'image';
+export type TrackType = "video" | "audio" | "text";
+export type MediaType = "video" | "audio" | "image";
+export type ProxyStatus = "none" | "pending" | "processing" | "ready" | "failed";
+export type ProxyProfile = "low" | "medium" | "high";
+export type WaveformStatus = "none" | "pending" | "processing" | "ready" | "failed";
+export type ThumbnailStatus = "none" | "pending" | "processing" | "ready" | "failed";
 
 // Media (媒体)
 export interface Media {
   id: string;
   name: string;
   type: MediaType;
-  path: string;              // temp 文件夹中的相对路径
-  originalPath?: string;     // 原始文件路径（用于 FFmpeg）
+  path: string; // temp 文件夹中的相对路径
+  originalPath?: string; // 原始文件路径（用于 FFmpeg）
   duration: number;
   width?: number;
   height?: number;
@@ -21,6 +25,20 @@ export interface Media {
   createdAt: string;
   sampleRate?: number;
   channels?: number;
+  proxyPath?: string;
+  proxyStatus?: ProxyStatus;
+  proxyProfile?: ProxyProfile;
+  proxyError?: string;
+  proxyUpdatedAt?: string;
+  waveformPath?: string;
+  waveformStatus?: WaveformStatus;
+  waveformError?: string;
+  waveformUpdatedAt?: string;
+  thumbnailPath?: string;
+  thumbnailDir?: string;
+  thumbnailStatus?: ThumbnailStatus;
+  thumbnailError?: string;
+  thumbnailUpdatedAt?: string;
 }
 
 // Effect (特效)
@@ -34,20 +52,25 @@ export interface Effect {
 }
 
 // Clip (片段) - 符合 HPVE 规范
+export type RepeatMode = "sequential" | "pattern";
+
 export interface Clip {
   id: string;
   mediaId: string;
   trackId: string;
-  startTime: number;        // 时间线上的开始时间
-  duration: number;         // 片段在时间线上的时长
-  trimStart: number;        // 素材的入点
-  trimEnd: number;          // 素材的出点
+  startTime: number; // 时间线上的开始时间
+  duration: number; // 片段在时间线上的时长
+  trimStart: number; // 素材的入点
+  trimEnd: number; // 素材的出点
+  thumbnailUrl?: string; // 兼容旧渲染组件与历史测试数据（可选）
   position: { x: number; y: number };
   scale: { x: number; y: number };
   rotation: number;
   opacity: number;
   effects: Effect[];
   repeatCount?: number;
+  repeatMode?: RepeatMode;
+  originalClipIds?: string[];
 }
 
 // Transition (转场)
@@ -114,13 +137,21 @@ export interface ProjectData {
     redoStack: any[];
     maxHistorySize: number;
   };
+  compressionInfo?: {
+    enabled: boolean;
+    originalClipCount: number;
+    compressedClipCount: number;
+    compressionRatio: number;
+    savedBytes?: number;
+    description?: string;
+  };
 }
 
 // ============ UI 状态 ============
 
 export interface DragState {
   isDragging: boolean;
-  dragType: 'move' | 'trim-left' | 'trim-right' | 'add' | null;
+  dragType: "move" | "trim-left" | "trim-right" | "add" | null;
   clipId?: string;
   startX: number;
   startTime: number;
@@ -141,7 +172,7 @@ export interface TimelineConfig {
 interface TimelineStore {
   // 项目数据
   project: ProjectData;
-  
+
   // UI 状态
   playheadPosition: number;
   zoomLevel: number;
@@ -149,35 +180,37 @@ interface TimelineStore {
   selectedClipIds: string[];
   dragState: DragState;
   config: TimelineConfig;
-  
+
   // 项目操作
   setProject: (project: ProjectData) => void;
   createNewProject: (name: string) => void;
-  
+
   // 媒体操作
   addMedia: (media: Media) => void;
+  updateMedia: (mediaId: string, updates: Partial<Media>) => void;
   removeMedia: (mediaId: string) => void;
-  
+
   // 轨道操作
   addTrack: (type: TrackType) => void;
   removeTrack: (trackId: string) => void;
   updateTrack: (trackId: string, updates: Partial<Track>) => void;
-  
+
   // 片段操作
   addClip: (clip: Clip) => void;
   updateClip: (clipId: string, updates: Partial<Clip>) => void;
   removeClip: (clipId: string) => void;
   removeClips: (clipIds: string[]) => void;
-  
+  splitClipsAtPlayhead: () => number;
+
   // 特效操作
   addEffect: (clipId: string, effect: Effect) => void;
   updateEffect: (clipId: string, effectId: string, updates: Partial<Effect>) => void;
   removeEffect: (clipId: string, effectId: string) => void;
-  
+
   // 转场操作
   addTransition: (trackId: string, transition: Transition) => void;
   removeTransition: (trackId: string, transitionId: string) => void;
-  
+
   // UI 操作
   setPlayheadPosition: (position: number) => void;
   setZoomLevel: (level: number) => void;
@@ -185,7 +218,7 @@ interface TimelineStore {
   selectClip: (clipId: string, multi: boolean) => void;
   clearSelection: () => void;
   setDragState: (state: Partial<DragState>) => void;
-  
+
   // 查询
   getClipsByTrack: (trackId: string) => Clip[];
   getTotalDuration: () => number;
@@ -212,12 +245,13 @@ const defaultDragState: DragState = {
   startTime: 0,
 };
 
-const generateId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+const generateId = (prefix: string) =>
+  `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
 const createDefaultProject = (name: string): ProjectData => ({
   metadata: {
     name,
-    version: '1.0.0',
+    version: "1.0.0",
     createdAt: new Date().toISOString(),
     modifiedAt: new Date().toISOString(),
   },
@@ -230,9 +264,9 @@ const createDefaultProject = (name: string): ProjectData => ({
   media: [],
   tracks: [
     {
-      id: generateId('track_video'),
-      name: '视频 1',
-      type: 'video',
+      id: generateId("track_video"),
+      name: "视频 1",
+      type: "video",
       order: 2,
       height: defaultConfig.trackHeight,
       visible: true,
@@ -241,9 +275,9 @@ const createDefaultProject = (name: string): ProjectData => ({
       transitions: [],
     },
     {
-      id: generateId('track_audio'),
-      name: '音频 1',
-      type: 'audio',
+      id: generateId("track_audio"),
+      name: "音频 1",
+      type: "audio",
       order: 1,
       height: defaultConfig.trackHeight,
       visible: true,
@@ -260,7 +294,7 @@ const createDefaultProject = (name: string): ProjectData => ({
     showRuler: true,
     showGuides: true,
     defaultTransitionDuration: 0.5,
-    theme: 'dark',
+    theme: "dark",
   },
   history: {
     undoStack: [],
@@ -272,7 +306,7 @@ const createDefaultProject = (name: string): ProjectData => ({
 // ============ Store 实现 ============
 
 export const useTimelineStore = create<TimelineStore>((set, get) => ({
-  project: createDefaultProject('Untitled Project'),
+  project: createDefaultProject("Untitled Project"),
   playheadPosition: 0,
   zoomLevel: defaultConfig.pixelsPerSecond,
   snapEnabled: true,
@@ -299,6 +333,15 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
     }));
   },
 
+  updateMedia: (mediaId: string, updates: Partial<Media>) => {
+    set((state) => ({
+      project: {
+        ...state.project,
+        media: state.project.media.map((m) => (m.id === mediaId ? { ...m, ...updates } : m)),
+      },
+    }));
+  },
+
   removeMedia: (mediaId: string) => {
     set((state) => ({
       project: {
@@ -315,8 +358,8 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
       const maxOrder = tracks.length > 0 ? Math.max(...tracks.map((t) => t.order)) : 0;
 
       const newTrack: Track = {
-        id: generateId('track'),
-        name: type === 'video' ? `视频 ${tracks.length + 1}` : `音频 ${tracks.length + 1}`,
+        id: generateId("track"),
+        name: type === "video" ? `视频 ${tracks.length + 1}` : `音频 ${tracks.length + 1}`,
         type,
         order: maxOrder + 1,
         height: state.config.trackHeight,
@@ -349,7 +392,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
       project: {
         ...state.project,
         tracks: state.project.tracks.map((track) =>
-          track.id === trackId ? { ...track, ...updates } : track
+          track.id === trackId ? { ...track, ...updates } : track,
         ),
       },
     }));
@@ -362,9 +405,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
         project: {
           ...state.project,
           tracks: state.project.tracks.map((track) =>
-            track.id === clip.trackId
-              ? { ...track, clips: [...track.clips, clip] }
-              : track
+            track.id === clip.trackId ? { ...track, clips: [...track.clips, clip] } : track,
           ),
         },
       };
@@ -377,9 +418,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
         ...state.project,
         tracks: state.project.tracks.map((track) => ({
           ...track,
-          clips: track.clips.map((clip) =>
-            clip.id === clipId ? { ...clip, ...updates } : clip
-          ),
+          clips: track.clips.map((clip) => (clip.id === clipId ? { ...clip, ...updates } : clip)),
         })),
       },
     }));
@@ -411,6 +450,63 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
     }));
   },
 
+  splitClipsAtPlayhead: () => {
+    const splitTime = get().playheadPosition;
+    const epsilon = 1e-6;
+    let splitCount = 0;
+
+    set((state) => ({
+      project: {
+        ...state.project,
+        tracks: state.project.tracks.map((track) => {
+          if (track.locked) {
+            return track;
+          }
+
+          const nextClips: Clip[] = [];
+          for (const clip of track.clips) {
+            const clipStart = clip.startTime;
+            const clipEnd = clip.startTime + clip.duration;
+            const canSplit = splitTime > clipStart + epsilon && splitTime < clipEnd - epsilon;
+
+            if (!canSplit) {
+              nextClips.push(clip);
+              continue;
+            }
+
+            const leftDuration = splitTime - clipStart;
+            const rightDuration = clipEnd - splitTime;
+            const splitTrim = clip.trimStart + leftDuration;
+
+            const leftClip: Clip = {
+              ...clip,
+              duration: leftDuration,
+              trimEnd: splitTrim,
+            };
+
+            const rightClip: Clip = {
+              ...clip,
+              id: generateId("clip"),
+              startTime: splitTime,
+              duration: rightDuration,
+              trimStart: splitTrim,
+            };
+
+            nextClips.push(leftClip, rightClip);
+            splitCount += 1;
+          }
+
+          return {
+            ...track,
+            clips: nextClips,
+          };
+        }),
+      },
+    }));
+
+    return splitCount;
+  },
+
   // 特效操作
   addEffect: (clipId: string, effect: Effect) => {
     set((state) => ({
@@ -419,7 +515,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
         tracks: state.project.tracks.map((track) => ({
           ...track,
           clips: track.clips.map((clip) =>
-            clip.id === clipId ? { ...clip, effects: [...clip.effects, effect] } : clip
+            clip.id === clipId ? { ...clip, effects: [...clip.effects, effect] } : clip,
           ),
         })),
       },
@@ -436,11 +532,9 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
             clip.id === clipId
               ? {
                   ...clip,
-                  effects: clip.effects.map((e) =>
-                    e.id === effectId ? { ...e, ...updates } : e
-                  ),
+                  effects: clip.effects.map((e) => (e.id === effectId ? { ...e, ...updates } : e)),
                 }
-              : clip
+              : clip,
           ),
         })),
       },
@@ -456,7 +550,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
           clips: track.clips.map((clip) =>
             clip.id === clipId
               ? { ...clip, effects: clip.effects.filter((e) => e.id !== effectId) }
-              : clip
+              : clip,
           ),
         })),
       },
@@ -469,7 +563,9 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
       project: {
         ...state.project,
         tracks: state.project.tracks.map((track) =>
-          track.id === trackId ? { ...track, transitions: [...track.transitions, transition] } : track
+          track.id === trackId
+            ? { ...track, transitions: [...track.transitions, transition] }
+            : track,
         ),
       },
     }));
@@ -482,7 +578,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
         tracks: state.project.tracks.map((track) =>
           track.id === trackId
             ? { ...track, transitions: track.transitions.filter((t) => t.id !== transitionId) }
-            : track
+            : track,
         ),
       },
     }));
@@ -504,10 +600,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
 
   setZoomLevel: (level: number) => {
     set((state) => ({
-      zoomLevel: Math.max(
-        state.config.minZoom,
-        Math.min(state.config.maxZoom, level)
-      ),
+      zoomLevel: Math.max(state.config.minZoom, Math.min(state.config.maxZoom, level)),
     }));
   },
 

@@ -1,0 +1,8 @@
+pnpm run lint
+
+staged_files=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|tsx|css|json)$')
+if [ -n "$staged_files" ]; then
+  pnpm exec oxfmt --check $staged_files
+else
+  echo "No staged files require format check."
+fi

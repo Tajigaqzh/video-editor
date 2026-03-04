@@ -1,12 +1,16 @@
 {
   "name": "video-editor",
-  "private": true,
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "lint": "oxlint --config .oxlintrc.json .",
+    "lint:fix": "oxlint --fix --config .oxlintrc.json .",
+    "format": "oxfmt \"src/**/*.{ts,tsx,css}\" \"test/**/*.{ts,tsx}\" package.json .oxlintrc.json .oxfmtrc.json",
+    "format:check": "oxfmt --check \"src/**/*.{ts,tsx,css}\" \"test/**/*.{ts,tsx}\" package.json .oxlintrc.json .oxfmtrc.json",
     "tauri": "tauri",
     "start": "tauri dev",
     "tauri:build": "pnpm bundle:ffmpeg && tauri build",
@@ -14,7 +18,8 @@
     "test": "vitest run",
     "test:ui": "vitest --ui",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "prepare": "husky"
   },
   "dependencies": {
     "@pixi/react": "^8.0.5",
@@ -43,7 +48,10 @@
     "@vitest/coverage-v8": "^4.0.18",
     "@vitest/ui": "^4.0.18",
     "fast-check": "^4.5.3",
+    "husky": "^9.1.7",
     "jsdom": "^28.1.0",
+    "oxfmt": "^0.36.0",
+    "oxlint": "^1.51.0",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",

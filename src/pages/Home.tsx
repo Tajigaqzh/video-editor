@@ -6,7 +6,7 @@ import "@/assets/css/split.css";
 
 function Home() {
   return (
-    <div className="h-full w-full overflow-hidden" style={{ backgroundColor: '#141414' }}>
+    <div className="h-full w-full overflow-hidden" style={{ backgroundColor: "#141414" }}>
       {/* 垂直分割：上部（素材+预览+属性） | 下部（时间轴） */}
       <Split
         className="h-full w-full"
@@ -14,7 +14,7 @@ function Home() {
         minSize={[400, 200]}
         gutterSize={8}
         direction="vertical"
-        style={{ display: 'flex', flexDirection: 'column' }}
+        style={{ display: "flex", flexDirection: "column" }}
       >
         {/* 上部：水平三栏布局 */}
         <div className="w-full overflow-hidden">
@@ -27,7 +27,7 @@ function Home() {
             gutterAlign="center"
             snapOffset={0}
             direction="horizontal"
-            style={{ display: 'flex', height: '100%' }}
+            style={{ display: "flex", height: "100%" }}
           >
             {/* 左侧：素材库面板 */}
             <div className="h-full overflow-hidden">
@@ -40,7 +40,10 @@ function Home() {
             </div>
 
             {/* 右侧：属性面板 */}
-            <div className="h-full flex flex-col overflow-hidden" style={{ backgroundColor: '#141414' }}>
+            <div
+              className="h-full flex flex-col overflow-hidden"
+              style={{ backgroundColor: "#141414" }}
+            >
               <div className="px-4 py-3 border-b border-gray-700">
                 <h2 className="text-white font-semibold">属性</h2>
               </div>
@@ -52,7 +55,7 @@ function Home() {
         </div>
 
         {/* 下部：时间轴区域（占满整个宽度） */}
-        <div className="w-full overflow-hidden" style={{ backgroundColor: '#141414' }}>
+        <div className="w-full overflow-hidden" style={{ backgroundColor: "#141414" }}>
           <Timeline />
         </div>
       </Split>

@@ -1,6 +1,8 @@
-import { invoke } from '@tauri-apps/api/core';
-import { convertFileSrc } from '@tauri-apps/api/core';
-
+/**
+ * 视频处理入口。
+ * 提供前端到 Tauri FFmpeg 命令的轻量封装。
+ */
+import { invoke } from "@tauri-apps/api/core";
 export interface VideoInfo {
   duration: number;
   width: number;
@@ -15,14 +17,14 @@ export interface VideoInfo {
  * 初始化 FFmpeg
  */
 export async function initFFmpeg(): Promise<void> {
-  await invoke('init_ffmpeg');
+  await invoke("init_ffmpeg");
 }
 
 /**
  * 获取视频信息
  */
 export async function getVideoInfo(path: string): Promise<VideoInfo> {
-  return await invoke('get_video_info', { path });
+  return await invoke("get_video_info", { path });
 }
 
 /**
@@ -31,16 +33,16 @@ export async function getVideoInfo(path: string): Promise<VideoInfo> {
 export async function extractVideoFrame(path: string, timestamp: number): Promise<string> {
   console.log(`🎬 开始提取视频帧: ${path} @ ${timestamp.toFixed(2)}s`);
   const startTime = performance.now();
-  
+
   // 调用 Tauri 命令提取帧并返回 base64 data URL
-  const dataUrl = await invoke<string>('extract_frame_to_base64', { 
-    path, 
-    timestamp 
+  const dataUrl = await invoke<string>("extract_frame_to_base64", {
+    path,
+    timestamp,
   });
-  
+
   const duration = performance.now() - startTime;
   console.log(`✅ 帧提取完成，耗时: ${duration.toFixed(0)}ms`);
-  
+
   return dataUrl;
 }
 
@@ -48,11 +50,11 @@ export async function extractVideoFrame(path: string, timestamp: number): Promis
  * 提取视频帧到指定路径
  */
 export async function extractFrameToFile(
-  path: string, 
-  timestamp: number, 
-  outputPath: string
+  path: string,
+  timestamp: number,
+  outputPath: string,
 ): Promise<void> {
-  await invoke('extract_frame', { path, timestamp, outputPath });
+  await invoke("extract_frame", { path, timestamp, outputPath });
 }
 
 /**
@@ -62,17 +64,14 @@ export async function trimVideo(
   inputPath: string,
   start: number,
   duration: number,
-  outputPath: string
+  outputPath: string,
 ): Promise<void> {
-  await invoke('trim_video', { inputPath, start, duration, outputPath });
+  await invoke("trim_video", { inputPath, start, duration, outputPath });
 }
 
 /**
  * 合并多个视频
  */
-export async function mergeVideos(
-  inputPaths: string[],
-  outputPath: string
-): Promise<void> {
-  await invoke('merge_videos', { inputPaths, outputPath });
+export async function mergeVideos(inputPaths: string[], outputPath: string): Promise<void> {
+  await invoke("merge_videos", { inputPaths, outputPath });
 }

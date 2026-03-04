@@ -1,8 +1,9 @@
 /**
- * Timeline utility functions for time conversion and formatting
+ * 时间线计算工具。
+ * 提供时间/像素换算、刻度生成、碰撞检测与吸附位置计算。
  */
 
-import type { Clip } from '../store/timelineStore';
+import type { Clip } from "@/store/timelineStore";
 
 export interface TimeMarker {
   time: number;
@@ -43,7 +44,7 @@ export function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   const ms = Math.floor((seconds % 1) * 1000);
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}.${ms.toString().padStart(3, "0")}`;
 }
 
 /**
@@ -56,8 +57,9 @@ export function formatTime(seconds: number): string {
 export function generateTimeMarks(
   duration: number,
   zoomLevel: number,
-  viewportWidth: number
+  viewportWidth: number,
 ): TimeMarker[] {
+  void viewportWidth;
   // Determine interval based on zoom level
   let interval: number;
   if (zoomLevel >= 100) {
@@ -97,20 +99,20 @@ export function checkClipCollision(
   trackId: string,
   startTime: number,
   duration: number,
-  allClips: Clip[]
+  allClips: Clip[],
 ): boolean {
   const endTime = startTime + duration;
-  
-  return allClips.some(otherClip => {
+
+  return allClips.some((otherClip) => {
     // Skip the clip itself
     if (otherClip.id === clipId) return false;
-    
+
     // Only check clips on the same track
     if (otherClip.trackId !== trackId) return false;
-    
+
     const otherStart = otherClip.startTime;
     const otherEnd = otherClip.startTime + otherClip.duration;
-    
+
     // Check if time ranges overlap
     // Two ranges [a1, a2] and [b1, b2] overlap if NOT (a2 <= b1 OR a1 >= b2)
     return !(endTime <= otherStart || startTime >= otherEnd);
@@ -139,46 +141,45 @@ export function calculateSnapPosition(
   playheadPosition: number,
   snapEnabled: boolean,
   snapThreshold: number,
-  zoomLevel: number
+  zoomLevel: number,
 ): number {
   if (!snapEnabled) return targetTime;
-  
+
+  // 将像素阈值换算到时间轴秒单位，保证不同缩放级别下吸附体验一致。
   const thresholdTime = snapThreshold / zoomLevel;
   const targetEndTime = targetTime + duration;
-  
+
   let closestTime = targetTime;
   let minDistance = thresholdTime;
-  
+
   // Check all clips on the same track
-  const trackClips = allClips.filter(
-    clip => clip.trackId === trackId && clip.id !== clipId
-  );
-  
+  const trackClips = allClips.filter((clip) => clip.trackId === trackId && clip.id !== clipId);
+
   for (const clip of trackClips) {
     const clipStart = clip.startTime;
     const clipEnd = clip.startTime + clip.duration;
-    
+
     // Check snap to clip start (target clip start to other clip start)
     const distToClipStart = Math.abs(targetTime - clipStart);
     if (distToClipStart < minDistance) {
       minDistance = distToClipStart;
       closestTime = clipStart;
     }
-    
+
     // Check snap to clip end (target clip start to other clip end)
     const distToClipEnd = Math.abs(targetTime - clipEnd);
     if (distToClipEnd < minDistance) {
       minDistance = distToClipEnd;
       closestTime = clipEnd;
     }
-    
+
     // Check snap target clip end to other clip start
     const distEndToStart = Math.abs(targetEndTime - clipStart);
     if (distEndToStart < minDistance) {
       minDistance = distEndToStart;
       closestTime = clipStart - duration;
     }
-    
+
     // Check snap target clip end to other clip end
     const distEndToEnd = Math.abs(targetEndTime - clipEnd);
     if (distEndToEnd < minDistance) {
@@ -186,19 +187,20 @@ export function calculateSnapPosition(
       closestTime = clipEnd - duration;
     }
   }
-  
+
   // Check snap to playhead (target clip start to playhead)
   const distToPlayhead = Math.abs(targetTime - playheadPosition);
   if (distToPlayhead < minDistance) {
     minDistance = distToPlayhead;
     closestTime = playheadPosition;
   }
-  
+
   // Check snap target clip end to playhead
   const distEndToPlayhead = Math.abs(targetEndTime - playheadPosition);
   if (distEndToPlayhead < minDistance) {
+    // 这里对齐的是“目标片段末尾”到播放头，因此需要回推 duration。
     closestTime = playheadPosition - duration;
   }
-  
+
   return closestTime;
 }

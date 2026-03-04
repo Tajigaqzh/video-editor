@@ -4,6 +4,10 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { ALL_SUPPORT_MEDIA_EXTENSIONS } from "@/constants/media";
 import { getFileType, getFileName } from "@/hooks/useMediaFile";
 import { useTimelineStore, type Media, type MediaType } from "@/store/timelineStore";
+import { enqueueProxyTranscode } from "@/services/proxyQueue";
+import { enqueueWaveformGeneration } from "@/services/waveformQueue";
+import { enqueueThumbnailGeneration } from "@/services/thumbnailQueue";
+import { selectProxyProfileForMedia } from "@/utils/media/proxyProfile";
 import {
   type MediaFile,
   type MediaFolder,
@@ -11,7 +15,7 @@ import {
   findFolder,
   addItemsToFolder,
   removeItemFromFolder,
-} from "@/utils/mediaOperations";
+} from "@/utils/media/mediaOperations";
 import ContextMenu from "./ContextMenu";
 import RenameDialog from "./RenameDialog";
 
@@ -21,21 +25,37 @@ export default function MediaLibrary() {
   const [folderPath, setFolderPath] = useState<string[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("素材");
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; itemId?: string; itemName?: string } | null>(null);
-  const [renameDialog, setRenameDialog] = useState<{ itemId: string; itemName: string } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    itemId?: string;
+    itemName?: string;
+  } | null>(null);
+  const [renameDialog, setRenameDialog] = useState<{ itemId: string; itemName: string } | null>(
+    null,
+  );
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
   const tabs = [
-    { id: "素材", icon: "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" },
-    { id: "音频", icon: "M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" },
-    { id: "文本", icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" },
+    {
+      id: "素材",
+      icon: "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10",
+    },
+    {
+      id: "音频",
+      icon: "M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3",
+    },
+    {
+      id: "文本",
+      icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
+    },
     { id: "转场", icon: "M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" },
   ];
 
   // 获取当前文件夹的内容
   const getCurrentItems = (): MediaItem[] => {
     if (!currentFolder) return mediaItems;
-    
+
     const folder = findFolder(mediaItems, currentFolder);
     return folder ? folder.children : [];
   };
@@ -61,17 +81,22 @@ export default function MediaLibrary() {
           url: convertFileSrc(filePath),
           type: getFileType(filePath),
         }));
-        
-        setMediaItems(prev => addItemsToFolder(prev, currentFolder, newFiles));
-        
+
+        setMediaItems((prev) => addItemsToFolder(prev, currentFolder, newFiles));
+
         // 同时添加到 store 中
         const { addMedia } = useTimelineStore.getState();
         for (const file of newFiles) {
           try {
-            const videoInfo = await invoke<any>('get_video_info', {
+            const videoInfo = await invoke<any>("get_video_info", {
               path: file.path,
             });
-            
+
+            const proxyProfile = selectProxyProfileForMedia({
+              width: videoInfo.width,
+              height: videoInfo.height,
+            });
+
             const media: Media = {
               id: file.id,
               name: file.name,
@@ -87,12 +112,27 @@ export default function MediaLibrary() {
               createdAt: new Date().toISOString(),
               sampleRate: videoInfo.sample_rate,
               channels: videoInfo.channels,
+              proxyStatus: "none",
+              proxyProfile,
+              proxyUpdatedAt: new Date().toISOString(),
+              waveformStatus: "none",
+              waveformUpdatedAt: new Date().toISOString(),
             };
-            
+
             addMedia(media);
-            console.log('✅ Media added to store:', file.name);
+            if (media.type === "video" && media.originalPath) {
+              enqueueProxyTranscode(media.id, media.originalPath, media.proxyProfile ?? "medium");
+              enqueueThumbnailGeneration(media.id, media.originalPath, {
+                mode: "first_screen",
+                priority: 12,
+              });
+            }
+            if ((media.type === "video" || media.type === "audio") && media.originalPath) {
+              enqueueWaveformGeneration(media.id, media.originalPath);
+            }
+            console.log("✅ Media added to store:", file.name);
           } catch (err) {
-            console.error('Failed to get video info for', file.name, ':', err);
+            console.error("Failed to get video info for", file.name, ":", err);
           }
         }
       }
@@ -110,30 +150,32 @@ export default function MediaLibrary() {
       type: "folder",
       children: [],
     };
-    setMediaItems(prev => addItemsToFolder(prev, currentFolder, [newFolder]));
+    setMediaItems((prev) => addItemsToFolder(prev, currentFolder, [newFolder]));
   };
 
   const handleOpenFolder = (folderId: string, folderName: string) => {
     setCurrentFolder(folderId);
-    setFolderPath(prev => [...prev, folderName]);
+    setFolderPath((prev) => [...prev, folderName]);
   };
 
   const handleGoBack = () => {
     if (folderPath.length === 0) return;
-    
+
     const newPath = [...folderPath];
     newPath.pop();
     setFolderPath(newPath);
-    
+
     if (newPath.length === 0) {
       setCurrentFolder(null);
     } else {
       // 需要找到对应路径的文件夹ID
       let items = mediaItems;
       let folderId: string | null = null;
-      
+
       for (const pathName of newPath) {
-        const folder = items.find(item => item.type === "folder" && item.name === pathName) as MediaFolder;
+        const folder = items.find(
+          (item) => item.type === "folder" && item.name === pathName,
+        ) as MediaFolder;
         if (folder) {
           folderId = folder.id;
           items = folder.children;
@@ -165,23 +207,23 @@ export default function MediaLibrary() {
   const handleContextMenu = (e: React.MouseEvent, itemId?: string, itemName?: string) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     // 获取菜单尺寸（估算）
     const menuWidth = 200;
     const menuHeight = itemId ? 150 : 100;
-    
+
     // 计算位置，确保不超出视口
     let x = e.clientX;
     let y = e.clientY;
-    
+
     if (x + menuWidth > window.innerWidth) {
       x = window.innerWidth - menuWidth - 10;
     }
-    
+
     if (y + menuHeight > window.innerHeight) {
       y = window.innerHeight - menuHeight - 10;
     }
-    
+
     setContextMenu({ x, y, itemId, itemName });
   };
 
@@ -193,20 +235,20 @@ export default function MediaLibrary() {
   useEffect(() => {
     if (!contextMenu) return;
 
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (_e: MouseEvent) => {
       setContextMenu(null);
     };
 
     // 延迟添加监听器，避免立即触发
     const timer = setTimeout(() => {
-      document.addEventListener('click', handleClickOutside);
-      document.addEventListener('contextmenu', handleClickOutside);
+      document.addEventListener("click", handleClickOutside);
+      document.addEventListener("contextmenu", handleClickOutside);
     }, 0);
 
     return () => {
       clearTimeout(timer);
-      document.removeEventListener('click', handleClickOutside);
-      document.removeEventListener('contextmenu', handleClickOutside);
+      document.removeEventListener("click", handleClickOutside);
+      document.removeEventListener("contextmenu", handleClickOutside);
     };
   }, [contextMenu]);
 
@@ -225,30 +267,30 @@ export default function MediaLibrary() {
 
   const handleRenameItem = (itemId: string, newName: string) => {
     const renameInFolder = (items: MediaItem[]): MediaItem[] => {
-      return items.map(item => {
+      return items.map((item) => {
         if (item.id === itemId) {
           return { ...item, name: newName };
         }
         if (item.type === "folder") {
           return {
             ...item,
-            children: renameInFolder((item as MediaFolder).children)
+            children: renameInFolder((item as MediaFolder).children),
           } as MediaFolder;
         }
         return item;
       });
     };
-    
-    setMediaItems(prev => renameInFolder(prev));
+
+    setMediaItems((prev) => renameInFolder(prev));
     setRenameDialog(null);
   };
 
   const handleRemoveItem = (id: string) => {
-    setMediaItems(prev => removeItemFromFolder(prev, id));
+    setMediaItems((prev) => removeItemFromFolder(prev, id));
   };
 
   return (
-    <div className="h-full flex flex-col" style={{ backgroundColor: '#141414' }}>
+    <div className="h-full flex flex-col" style={{ backgroundColor: "#141414" }}>
       <div className="px-2 py-2 border-b border-gray-700 flex gap-1">
         {tabs.map((tab) => (
           <button
@@ -273,7 +315,7 @@ export default function MediaLibrary() {
         className={`flex-1 overflow-auto p-4 ${
           isDragging ? "bg-gray-700 border-2 border-dashed border-blue-500" : ""
         }`}
-        style={!isDragging ? { backgroundColor: '#141414' } : undefined}
+        style={!isDragging ? { backgroundColor: "#141414" } : undefined}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -285,16 +327,21 @@ export default function MediaLibrary() {
             {/* 面包屑导航 */}
             {folderPath.length > 0 && (
               <div className="flex items-center gap-2 mb-4 text-xs text-gray-400">
-                <button 
-                  onClick={handleGoBack} 
+                <button
+                  onClick={handleGoBack}
                   className="hover:text-white transition-colors p-1"
                   title="返回上一级"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                    />
                   </svg>
                 </button>
-                <button 
+                <button
                   onClick={() => {
                     setCurrentFolder(null);
                     setFolderPath([]);
@@ -316,14 +363,24 @@ export default function MediaLibrary() {
             <div className="flex flex-wrap gap-2">
               {/* 空状态提示 - 列表为空时显示 */}
               {getCurrentItems().length === 0 && (
-                <div 
+                <div
                   onClick={handleAddFiles}
                   className="w-full h-48 bg-gray-800/50 hover:bg-gray-800/70 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:text-white cursor-pointer transition-colors"
                 >
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center">
-                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
+                      <svg
+                        className="w-3 h-3 text-white"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={3}
+                          d="M12 4v16m8-8H4"
+                        />
                       </svg>
                     </div>
                     <span className="text-base font-medium">导入</span>
@@ -344,14 +401,26 @@ export default function MediaLibrary() {
                         <svg className="w-10 h-10" fill="#DDB921" viewBox="0 0 20 20">
                           <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
                         </svg>
-                        <p className="text-white text-xs mt-1 truncate px-1 w-full text-center">{item.name}</p>
+                        <p className="text-white text-xs mt-1 truncate px-1 w-full text-center">
+                          {item.name}
+                        </p>
                       </div>
                       <button
                         onClick={() => handleRemoveItem(item.id)}
                         className="absolute top-1 right-1 w-5 h-5 bg-red-600 hover:bg-red-700 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
                       >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        <svg
+                          className="w-3 h-3"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
                         </svg>
                       </button>
                     </div>
@@ -360,25 +429,31 @@ export default function MediaLibrary() {
                       className="relative w-24 h-20 bg-gray-700 rounded overflow-hidden group cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all"
                       draggable
                       onDragStart={(e) => {
-                        e.dataTransfer.effectAllowed = 'copy';
-                        e.dataTransfer.setData("application/json", JSON.stringify({
-                          ...item,
-                          dragType: 'media',
-                        }));
-                        console.log('Drag start:', item);
+                        e.dataTransfer.effectAllowed = "copy";
+                        e.dataTransfer.setData(
+                          "application/json",
+                          JSON.stringify({
+                            ...item,
+                            dragType: "media",
+                          }),
+                        );
+                        console.log("Drag start:", item);
                       }}
                       onDragEnd={(e) => {
-                        console.log('Drag end, dropEffect:', e.dataTransfer.dropEffect);
+                        console.log("Drag end, dropEffect:", e.dataTransfer.dropEffect);
                       }}
                       onContextMenu={(e) => handleContextMenu(e, item.id, item.name)}
                     >
                       {item.type === "video" && (
-                        <video src={(item as MediaFile).url} className="w-full h-full object-cover" />
+                        <video
+                          src={(item as MediaFile).url}
+                          className="w-full h-full object-cover"
+                        />
                       )}
                       {item.type === "image" && (
-                        <img 
-                          src={(item as MediaFile).url} 
-                          alt={item.name} 
+                        <img
+                          src={(item as MediaFile).url}
+                          alt={item.name}
                           className="w-full h-full object-cover"
                         />
                       )}
@@ -396,8 +471,18 @@ export default function MediaLibrary() {
                         onClick={() => handleRemoveItem(item.id)}
                         className="absolute top-1 right-1 w-5 h-5 bg-red-600 hover:bg-red-700 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
                       >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        <svg
+                          className="w-3 h-3"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
                         </svg>
                       </button>
                     </div>
@@ -436,9 +521,7 @@ export default function MediaLibrary() {
           x={contextMenu.x}
           y={contextMenu.y}
           itemId={contextMenu.itemId}
-          itemName={contextMenu.itemName}
           onAction={handleContextMenuAction}
-          onClose={handleCloseContextMenu}
         />
       )}
 

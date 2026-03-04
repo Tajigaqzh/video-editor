@@ -133,13 +133,16 @@ async fn stream_frames(
     end_time: f64,
     fps: f64,
 ) -> Result<()> {
-    use base64::{Engine as _, engine::general_purpose};
+    use base64::{engine::general_purpose, Engine as _};
 
     let frame_interval = 1.0 / fps;
     let mut current_time = start_time;
     let mut frame_count = 0;
 
-    println!("🎬 Starting frame stream: {:.2}s - {:.2}s @ {:.0} fps", start_time, end_time, fps);
+    println!(
+        "🎬 Starting frame stream: {:.2}s - {:.2}s @ {:.0} fps",
+        start_time, end_time, fps
+    );
 
     while current_time < end_time {
         // 解码帧

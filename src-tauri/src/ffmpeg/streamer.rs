@@ -1,6 +1,7 @@
-use std::process::{Command, Stdio};
-use std::io::Read;
+use super::process;
 use anyhow::{Context, Result};
+use std::io::Read;
+use std::process::Stdio;
 
 /// 视频流解码器 - 用于实时解码视频帧
 pub struct VideoStreamer {
@@ -13,23 +14,30 @@ impl VideoStreamer {
     }
 
     /// 流式解码视频，返回 JPEG 帧数据
-    /// 
+    ///
     /// # Arguments
     /// * `path` - 视频文件路径
     /// * `timestamp` - 要解码的时间戳（秒）
-    /// 
+    ///
     /// # Returns
     /// JPEG 帧的原始字节数据
     pub fn decode_frame(&self, path: &str, timestamp: f64) -> Result<Vec<u8>> {
-        let mut child = Command::new(&self.ffmpeg_cmd)
+        let mut child = process::command(&self.ffmpeg_cmd)
             .args([
-                "-ss", &timestamp.to_string(),
-                "-i", path,
-                "-vframes", "1",
-                "-vf", "scale=1280:-1",
-                "-q:v", "5",
-                "-f", "image2",
-                "-c:v", "mjpeg",
+                "-ss",
+                &timestamp.to_string(),
+                "-i",
+                path,
+                "-vframes",
+                "1",
+                "-vf",
+                "scale=1280:-1",
+                "-q:v",
+                "5",
+                "-f",
+                "image2",
+                "-c:v",
+                "mjpeg",
                 "pipe:1",
             ])
             .stdout(Stdio::piped())
@@ -39,7 +47,8 @@ impl VideoStreamer {
 
         let mut stdout = child.stdout.take().context("Failed to get stdout")?;
         let mut buffer = Vec::new();
-        stdout.read_to_end(&mut buffer)
+        stdout
+            .read_to_end(&mut buffer)
             .context("Failed to read ffmpeg output")?;
 
         child.wait().context("Failed to wait for ffmpeg")?;
@@ -68,13 +77,18 @@ impl VideoStreamer {
         let temp_path = temp_file.to_str().context("Invalid temp path")?;
 
         // 使用 FFmpeg 直接输出到文件
-        let status = Command::new(&self.ffmpeg_cmd)
+        let status = process::command(&self.ffmpeg_cmd)
             .args([
-                "-ss", &timestamp.to_string(),
-                "-i", path,
-                "-vframes", "1",
-                "-vf", "scale=1280:-1",
-                "-q:v", "5",
+                "-ss",
+                &timestamp.to_string(),
+                "-i",
+                path,
+                "-vframes",
+                "1",
+                "-vf",
+                "scale=1280:-1",
+                "-q:v",
+                "5",
                 "-y",
                 temp_path,
             ])
@@ -93,13 +107,17 @@ impl VideoStreamer {
     /// 获取视频的总帧数
     #[allow(dead_code)]
     pub fn get_frame_count(&self, path: &str, _fps: f64) -> Result<u32> {
-        let output = Command::new(&self.ffmpeg_cmd)
+        let output = process::command(&self.ffmpeg_cmd)
             .args([
-                "-v", "error",
-                "-select_streams", "v:0",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
                 "-count_packets",
-                "-show_entries", "stream=nb_read_packets",
-                "-of", "csv=p=0",
+                "-show_entries",
+                "stream=nb_read_packets",
+                "-of",
+                "csv=p=0",
                 path,
             ])
             .output()

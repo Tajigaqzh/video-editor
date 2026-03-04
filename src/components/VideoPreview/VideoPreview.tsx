@@ -1,214 +1,147 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Application, Container, Sprite, Assets } from 'pixi.js';
-import { invoke } from '@tauri-apps/api/core';
-import { useTimelineStore } from '@/store/timelineStore';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { useTimelineStore } from "@/store/timelineStore";
 
 interface VideoPreviewProps {
   width?: number;
   height?: number;
 }
 
+const SYNC_TOLERANCE_SECONDS = 0.2;
+
 const VideoPreview: React.FC<VideoPreviewProps> = () => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const appRef = useRef<Application | null>(null);
-  const videoLayerRef = useRef<Container | null>(null);
-  
-  const [isReady, setIsReady] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const playheadPositionRef = useRef(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [canvasSize, setCanvasSize] = useState({ width: 1280, height: 720 });
-  const [frameCache, setFrameCache] = useState<Map<string, string>>(new Map());
-  
-  // 先从 store 获取数据
-  const { project, playheadPosition, setPlayheadPosition } = useTimelineStore();
-  
-  // 然后创建 refs
-  const animationFrameRef = useRef<number | null>(null);
-  const lastFrameTimeRef = useRef<number>(0);
-  const isDecodingRef = useRef(false);
-  const playheadPositionRef = useRef(playheadPosition);
-  const frameCacheRef = useRef<Map<string, string>>(frameCache);
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  const [sourceMediaId, setSourceMediaId] = useState<string | null>(null);
 
-  // 同步 playheadPosition ref
+  const { project, playheadPosition, setPlayheadPosition } = useTimelineStore();
+
   useEffect(() => {
     playheadPositionRef.current = playheadPosition;
   }, [playheadPosition]);
 
-  // 同步 frameCache ref
-  useEffect(() => {
-    frameCacheRef.current = frameCache;
-  }, [frameCache]);
+  const allVideoClips = useMemo(
+    () => project.tracks.filter((track) => track.type === "video").flatMap((track) => track.clips),
+    [project.tracks],
+  );
 
-  // 获取当前活跃的视频片段
-  const activeVideoClip = project.tracks
-    .find(track => track.type === 'video')
-    ?.clips.find(clip => {
-      const clipEnd = clip.startTime + clip.duration;
-      return playheadPosition >= clip.startTime && playheadPosition < clipEnd;
-    });
+  const activeVideoClip = useMemo(
+    () =>
+      allVideoClips.find((clip) => {
+        const clipEnd = clip.startTime + clip.duration;
+        return playheadPosition >= clip.startTime && playheadPosition < clipEnd;
+      }),
+    [allVideoClips, playheadPosition],
+  );
 
-  // 初始化 PixiJS
-  useEffect(() => {
-    if (!canvasRef.current || appRef.current) return;
+  const activeMedia = useMemo(
+    () => project.media.find((media) => media.id === activeVideoClip?.mediaId),
+    [project.media, activeVideoClip],
+  );
 
-    const initPixi = async () => {
-      try {
-        const app = new Application();
-        await app.init({
-          width: canvasSize.width,
-          height: canvasSize.height,
-          backgroundColor: 0x000000,
-          antialias: true,
-          resolution: window.devicePixelRatio || 1,
-          autoDensity: true,
-        });
-
-        if (canvasRef.current) {
-          canvasRef.current.innerHTML = '';
-          canvasRef.current.appendChild(app.canvas);
-          appRef.current = app;
-
-          const videoLayer = new Container();
-          app.stage.addChild(videoLayer);
-          videoLayerRef.current = videoLayer;
-
-          setIsReady(true);
-        }
-      } catch (error) {
-        console.error('Failed to initialize PixiJS:', error);
-      }
-    };
-
-    initPixi();
-
-    return () => {
-      if (appRef.current) {
-        appRef.current.destroy(true, { children: true });
-        appRef.current = null;
-        videoLayerRef.current = null;
-      }
-    };
+  const getPreviewPath = useCallback((media: (typeof project.media)[number]): string => {
+    if (
+      media.proxyStatus === "ready" &&
+      typeof media.proxyPath === "string" &&
+      media.proxyPath.length > 0
+    ) {
+      return media.proxyPath;
+    }
+    if (typeof media.originalPath === "string" && media.originalPath.length > 0) {
+      return media.originalPath;
+    }
+    return media.path;
   }, []);
 
-  // 监听容器大小变化（带防抖）
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    let resizeTimeout: NodeJS.Timeout | null = null;
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      // 清除之前的防抖计时器
-      if (resizeTimeout) {
-        clearTimeout(resizeTimeout);
-      }
-
-      // 防抖：等待 100ms 后再处理
-      resizeTimeout = setTimeout(() => {
-        for (const entry of entries) {
-          const { width, height } = entry.contentRect;
-          
-          const controlBarHeight = 60;
-          const padding = 80;
-          const availableWidth = width - padding;
-          const availableHeight = height - controlBarHeight - padding;
-          
-          const aspectRatio = 16 / 9;
-          let newWidth = availableWidth;
-          let newHeight = availableWidth / aspectRatio;
-          
-          if (newHeight > availableHeight) {
-            newHeight = availableHeight;
-            newWidth = availableHeight * aspectRatio;
-          }
-          
-          const newSize = {
-            width: Math.floor(newWidth),
-            height: Math.floor(newHeight),
-          };
-          
-          setCanvasSize(newSize);
-
-          // 调整 PixiJS 渲染器大小
-          if (appRef.current) {
-            appRef.current.renderer.resize(newSize.width, newSize.height);
-          }
-        }
-      }, 100);
-    });
-
-    resizeObserver.observe(containerRef.current);
-    
-    return () => {
-      if (resizeTimeout) {
-        clearTimeout(resizeTimeout);
-      }
-      resizeObserver.disconnect();
-    };
+  const resolvePlayableUrl = useCallback(async (path: string): Promise<string> => {
+    const absolutePath = await invoke<string>("resolve_media_path", { path });
+    return convertFileSrc(absolutePath);
   }, []);
 
-  // 流式解码并渲染帧
-  const renderFrame = useCallback(async (timestamp: number) => {
-    if (!activeVideoClip || !videoLayerRef.current || isDecodingRef.current) return;
+  useEffect(() => {
+    let cancelled = false;
 
-    isDecodingRef.current = true;
-
-    try {
-      // 从 Media 对象中获取文件路径
-      const media = project.media.find(m => m.id === activeVideoClip.mediaId);
-      if (!media) {
-        console.warn('Media not found in project.media:', activeVideoClip.mediaId);
+    const loadSource = async () => {
+      if (!activeMedia) {
+        setSourceUrl(null);
+        setSourceMediaId(null);
         return;
       }
 
-      const cacheKey = `${timestamp.toFixed(2)}`;
-      let frameDataUrl = frameCacheRef.current.get(cacheKey);
-
-      // 如果缓存中没有，则从后端解码
-      if (!frameDataUrl) {
-        const filePath = media.originalPath || media.path;
-        frameDataUrl = await invoke<string>('stream_decode_frame', {
-          path: filePath,
-          timestamp,
-        });
-        
-        // 缓存新帧
-        setFrameCache(prev => new Map(prev).set(cacheKey, frameDataUrl));
+      const previewPath = getPreviewPath(activeMedia);
+      try {
+        const url = await resolvePlayableUrl(previewPath);
+        if (cancelled) return;
+        setSourceUrl(url);
+        setSourceMediaId(activeMedia.id);
+      } catch (error) {
+        console.error("Failed to resolve preview media path:", error);
+        if (cancelled) return;
+        setSourceUrl(null);
+        setSourceMediaId(null);
       }
+    };
 
-      // 加载纹理
-      const texture = await Assets.load(frameDataUrl);
-      
-      // 清空旧帧
-      videoLayerRef.current.removeChildren();
+    void loadSource();
 
-      // 创建精灵
-      const sprite = new Sprite(texture);
-      
-      // 计算缩放和位置
-      if (texture.source && texture.source.width > 0 && texture.source.height > 0) {
-        const textureWidth = texture.source.width;
-        const textureHeight = texture.source.height;
-        
-        const scaleX = canvasSize.width / textureWidth;
-        const scaleY = canvasSize.height / textureHeight;
-        const scale = Math.min(scaleX, scaleY);
-        
-        sprite.scale.set(scale);
-        sprite.x = (canvasSize.width - textureWidth * scale) / 2;
-        sprite.y = (canvasSize.height - textureHeight * scale) / 2;
-      }
+    return () => {
+      cancelled = true;
+    };
+  }, [activeMedia, getPreviewPath, resolvePlayableUrl]);
 
-      videoLayerRef.current.addChild(sprite);
-    } catch (error) {
-      console.error('Failed to render frame:', error);
-    } finally {
-      isDecodingRef.current = false;
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !activeVideoClip) {
+      setCurrentTime(0);
+      setDuration(0);
+      return;
     }
-  }, [activeVideoClip, project.media, canvasSize]);
 
-  // 播放循环
+    const clipTime = Math.max(0, playheadPosition - activeVideoClip.startTime);
+    setCurrentTime(clipTime);
+    setDuration(activeVideoClip.duration);
+
+    if (!sourceUrl) return;
+
+    const shouldSeek = Math.abs(video.currentTime - clipTime) > SYNC_TOLERANCE_SECONDS;
+    if (!isPlaying && shouldSeek) {
+      video.currentTime = clipTime;
+    }
+
+    if (isPlaying && shouldSeek) {
+      video.currentTime = clipTime;
+    }
+  }, [activeVideoClip, isPlaying, playheadPosition, sourceUrl]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (!activeVideoClip || !sourceUrl) {
+      video.pause();
+      return;
+    }
+
+    const clipTime = Math.max(0, playheadPositionRef.current - activeVideoClip.startTime);
+    if (Math.abs(video.currentTime - clipTime) > SYNC_TOLERANCE_SECONDS) {
+      video.currentTime = clipTime;
+    }
+
+    if (isPlaying) {
+      void video.play().catch((error) => {
+        console.warn("Video play() failed:", error);
+        setIsPlaying(false);
+      });
+    } else {
+      video.pause();
+    }
+  }, [activeVideoClip, isPlaying, sourceUrl, sourceMediaId]);
+
   useEffect(() => {
     if (!isPlaying) {
       if (animationFrameRef.current) {
@@ -219,39 +152,32 @@ const VideoPreview: React.FC<VideoPreviewProps> = () => {
     }
 
     let lastTime = performance.now();
+    const maxEndTime =
+      allVideoClips.length > 0
+        ? Math.max(...allVideoClips.map((clip) => clip.startTime + clip.duration))
+        : 0;
 
-    const animate = (currentTime: number) => {
-      const deltaTime = (currentTime - lastTime) / 1000; // 转换为秒
-      lastTime = currentTime;
+    if (maxEndTime <= 0) {
+      setIsPlaying(false);
+      return;
+    }
 
-      const newTime = playheadPositionRef.current + deltaTime;
+    const tick = (now: number) => {
+      const delta = (now - lastTime) / 1000;
+      lastTime = now;
 
-      // 获取所有视频轨道的素材
-      const videoClips = project.tracks
-        .filter(track => track.type === 'video')
-        .flatMap(track => track.clips);
-
-      if (videoClips.length === 0) {
-        setIsPlaying(false);
-        return;
-      }
-
-      // 找到最后一个素材的结束时间
-      const maxEndTime = Math.max(...videoClips.map(c => c.startTime + c.duration));
-
-      // 如果播放到了所有素材的末尾，停止播放
-      if (newTime >= maxEndTime) {
-        setIsPlaying(false);
+      const nextTime = playheadPositionRef.current + delta;
+      if (nextTime >= maxEndTime) {
         setPlayheadPosition(maxEndTime);
+        setIsPlaying(false);
         return;
       }
 
-      // 继续播放（无论是否在素材内）
-      setPlayheadPosition(newTime);
-      animationFrameRef.current = requestAnimationFrame(animate);
+      setPlayheadPosition(nextTime);
+      animationFrameRef.current = requestAnimationFrame(tick);
     };
 
-    animationFrameRef.current = requestAnimationFrame(animate);
+    animationFrameRef.current = requestAnimationFrame(tick);
 
     return () => {
       if (animationFrameRef.current) {
@@ -259,185 +185,133 @@ const VideoPreview: React.FC<VideoPreviewProps> = () => {
         animationFrameRef.current = null;
       }
     };
-  }, [isPlaying, project, setPlayheadPosition]);
+  }, [allVideoClips, isPlaying, setPlayheadPosition]);
 
-  // 同步播放头位置到画布
   useEffect(() => {
-    if (!isReady) return;
-
-    if (!activeVideoClip) {
-      // 没有活跃素材，清空画布显示空白
-      if (videoLayerRef.current) {
-        videoLayerRef.current.removeChildren();
-      }
-      setCurrentTime(0);
-      setDuration(0);
-      return;
-    }
-
-    const clipTime = playheadPosition - activeVideoClip.startTime;
-    setCurrentTime(clipTime);
-    setDuration(activeVideoClip.duration);
-
-    // 节流：限制渲染频率
-    const now = performance.now();
-    if (now - lastFrameTimeRef.current > 33) { // ~30fps
-      lastFrameTimeRef.current = now;
-      renderFrame(clipTime);
-    }
-  }, [playheadPosition, activeVideoClip, isReady]);
-
-  // 播放/暂停
-  const handleTogglePlay = () => {
-    setIsPlaying(!isPlaying);
-  };
-
-  // 流式抽帧 - 在播放时后台抽取后续帧
-  useEffect(() => {
-    if (!isPlaying || !activeVideoClip) return;
-
-    const media = project.media.find(m => m.id === activeVideoClip.mediaId);
-    if (!media) return;
-
-    // 每隔 100ms 抽取一次后续帧
-    const extractInterval = setInterval(async () => {
-      const nextFrameTime = playheadPositionRef.current - activeVideoClip.startTime + 0.5; // 提前 0.5 秒抽取
-      
-      // 检查是否已经缓存过这个时间的帧
-      const cacheKey = `${nextFrameTime.toFixed(2)}`;
-      if (frameCacheRef.current.has(cacheKey)) {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "Space") {
+        event.preventDefault();
+        setIsPlaying((prev) => !prev);
         return;
       }
 
-      try {
-        const frameDataUrl = await invoke<string>('stream_decode_frame', {
-          path: media.originalPath || media.path,
-          timestamp: nextFrameTime,
-        });
-        
-        // 缓存新抽取的帧
-        setFrameCache(prev => new Map(prev).set(cacheKey, frameDataUrl));
-        console.log('✅ Frame extracted at', nextFrameTime.toFixed(2), 's');
-      } catch (err) {
-        console.warn('Frame extraction failed at', nextFrameTime.toFixed(2), 's:', err);
+      if (event.code === "ArrowLeft") {
+        event.preventDefault();
+        if (!activeVideoClip) return;
+        setPlayheadPosition(Math.max(activeVideoClip.startTime, playheadPositionRef.current - 1));
+        return;
       }
-    }, 100); // 每 100ms 检查一次
 
-    return () => clearInterval(extractInterval);
-  }, [isPlaying, activeVideoClip, project.media]);
-
-  // 上一秒
-  const handlePreviousSecond = () => {
-    if (activeVideoClip) {
-      setPlayheadPosition(Math.max(activeVideoClip.startTime, playheadPosition - 1));
-    }
-  };
-
-  // 下一秒
-  const handleNextSecond = () => {
-    if (activeVideoClip) {
-      const maxTime = activeVideoClip.startTime + activeVideoClip.duration;
-      setPlayheadPosition(Math.min(maxTime, playheadPosition + 1));
-    }
-  };
-
-  // 键盘快捷键
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
-        e.preventDefault();
-        handleTogglePlay();
-      } else if (e.code === 'ArrowLeft') {
-        e.preventDefault();
-        handlePreviousSecond();
-      } else if (e.code === 'ArrowRight') {
-        e.preventDefault();
-        handleNextSecond();
+      if (event.code === "ArrowRight") {
+        event.preventDefault();
+        if (!activeVideoClip) return;
+        const maxTime = activeVideoClip.startTime + activeVideoClip.duration;
+        setPlayheadPosition(Math.min(maxTime, playheadPositionRef.current + 1));
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, activeVideoClip, playheadPosition]);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeVideoClip, setPlayheadPosition]);
 
   return (
-    <div
-      ref={containerRef}
-      className="h-full w-full flex flex-col"
-      style={{ backgroundColor: '#141414' }}
-    >
-      {/* Canvas 显示区域 */}
+    <div className="h-full w-full flex flex-col" style={{ backgroundColor: "#141414" }}>
       <div
         className="flex-1 flex items-center justify-center overflow-hidden"
-        style={{ backgroundColor: '#000' }}
+        style={{ backgroundColor: "#000" }}
       >
-        <div
-          ref={canvasRef}
-          style={{
-            width: canvasSize.width,
-            height: canvasSize.height,
-          }}
-        />
+        {sourceUrl ? (
+          <video
+            ref={videoRef}
+            src={sourceUrl}
+            className="max-h-full max-w-full"
+            controls={false}
+            muted
+            playsInline
+            preload="metadata"
+            onLoadedMetadata={() => {
+              if (!activeVideoClip || !videoRef.current) return;
+              const clipTime = Math.max(0, playheadPositionRef.current - activeVideoClip.startTime);
+              videoRef.current.currentTime = clipTime;
+              if (isPlaying) {
+                void videoRef.current.play().catch((error) => {
+                  console.warn("Video play() failed after metadata loaded:", error);
+                  setIsPlaying(false);
+                });
+              }
+            }}
+            onError={(event) => {
+              console.error("Video element error:", event);
+            }}
+          />
+        ) : (
+          <div className="text-gray-500 text-sm">暂无可预览视频</div>
+        )}
       </div>
 
-      {/* 控制栏 */}
       <div
         style={{
-          height: '60px',
-          backgroundColor: '#1a1a1a',
-          borderTop: '1px solid #333',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          paddingLeft: '20px',
-          paddingRight: '20px',
-          gap: '20px',
+          height: "60px",
+          backgroundColor: "#1a1a1a",
+          borderTop: "1px solid #333",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          paddingLeft: "20px",
+          paddingRight: "20px",
+          gap: "20px",
         }}
       >
-        {/* 上一秒按钮 */}
         <button
-          onClick={handlePreviousSecond}
-          style={{
-            width: '40px',
-            height: '40px',
-            backgroundColor: '#333',
-            border: 'none',
-            borderRadius: '4px',
-            color: '#fff',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'background-color 0.2s',
+          onClick={() => {
+            if (!activeVideoClip) return;
+            setPlayheadPosition(Math.max(activeVideoClip.startTime, playheadPosition - 1));
           }}
-          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#444'}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#333'}
+          style={{
+            width: "40px",
+            height: "40px",
+            backgroundColor: "#333",
+            border: "none",
+            borderRadius: "4px",
+            color: "#fff",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "background-color 0.2s",
+          }}
+          onMouseEnter={(event) => (event.currentTarget.style.backgroundColor = "#444")}
+          onMouseLeave={(event) => (event.currentTarget.style.backgroundColor = "#333")}
           title="上一秒 (←)"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+            />
           </svg>
         </button>
 
-        {/* 播放/暂停按钮 */}
         <button
-          onClick={handleTogglePlay}
+          onClick={() => setIsPlaying((prev) => !prev)}
           style={{
-            width: '48px',
-            height: '48px',
-            backgroundColor: '#1976d2',
-            border: 'none',
-            borderRadius: '50%',
-            color: '#fff',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'background-color 0.2s',
+            width: "48px",
+            height: "48px",
+            backgroundColor: "#1976d2",
+            border: "none",
+            borderRadius: "50%",
+            color: "#fff",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "background-color 0.2s",
           }}
-          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1565c0'}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#1976d2'}
-          title={isPlaying ? '暂停 (Space)' : '播放 (Space)'}
+          onMouseEnter={(event) => (event.currentTarget.style.backgroundColor = "#1565c0")}
+          onMouseLeave={(event) => (event.currentTarget.style.backgroundColor = "#1976d2")}
+          title={isPlaying ? "暂停 (Space)" : "播放 (Space)"}
         >
           {!isPlaying ? (
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -450,38 +324,45 @@ const VideoPreview: React.FC<VideoPreviewProps> = () => {
           )}
         </button>
 
-        {/* 下一秒按钮 */}
         <button
-          onClick={handleNextSecond}
-          style={{
-            width: '40px',
-            height: '40px',
-            backgroundColor: '#333',
-            border: 'none',
-            borderRadius: '4px',
-            color: '#fff',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'background-color 0.2s',
+          onClick={() => {
+            if (!activeVideoClip) return;
+            const maxTime = activeVideoClip.startTime + activeVideoClip.duration;
+            setPlayheadPosition(Math.min(maxTime, playheadPosition + 1));
           }}
-          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#444'}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#333'}
+          style={{
+            width: "40px",
+            height: "40px",
+            backgroundColor: "#333",
+            border: "none",
+            borderRadius: "4px",
+            color: "#fff",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "background-color 0.2s",
+          }}
+          onMouseEnter={(event) => (event.currentTarget.style.backgroundColor = "#444")}
+          onMouseLeave={(event) => (event.currentTarget.style.backgroundColor = "#333")}
           title="下一秒 (→)"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 5l7 7-7 7M5 5l7 7-7 7"
+            />
           </svg>
         </button>
 
-        {/* 时间显示 */}
         <div
           style={{
-            color: '#aaa',
-            fontSize: '14px',
-            fontFamily: 'monospace',
-            minWidth: '100px',
+            color: "#aaa",
+            fontSize: "14px",
+            fontFamily: "monospace",
+            minWidth: "100px",
           }}
         >
           {formatTime(currentTime)} / {formatTime(duration)}
@@ -495,7 +376,7 @@ const formatTime = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   const ms = Math.floor((seconds % 1) * 100);
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
+  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}.${ms.toString().padStart(2, "0")}`;
 };
 
 export default VideoPreview;

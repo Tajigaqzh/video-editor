@@ -1,13 +1,14 @@
-import React from 'react';
-import { useTimelineStore } from '@/store/timelineStore';
-import { formatTime } from '@/utils/timelineUtils';
+import React from "react";
+import { useTimelineStore } from "@/store/timelineStore";
+import { formatTime } from "@/utils/timeline/timelineUtils";
 
 interface TimelineToolbarProps {
   className?: string;
 }
 
-const TimelineToolbar: React.FC<TimelineToolbarProps> = ({ className = '' }) => {
+const TimelineToolbar: React.FC<TimelineToolbarProps> = ({ className = "" }) => {
   const {
+    project,
     playheadPosition,
     zoomLevel,
     snapEnabled,
@@ -15,6 +16,7 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({ className = '' }) => 
     setZoomLevel,
     toggleSnap,
     addTrack,
+    splitClipsAtPlayhead,
   } = useTimelineStore();
 
   // Handle zoom in
@@ -31,28 +33,42 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({ className = '' }) => 
 
   // Handle add video track
   const handleAddVideoTrack = () => {
-    addTrack('video');
+    addTrack("video");
   };
 
   // Handle add audio track
   const handleAddAudioTrack = () => {
-    addTrack('audio');
+    addTrack("audio");
+  };
+
+  const canSplitAtPlayhead = React.useMemo(() => {
+    const epsilon = 1e-6;
+    return project.tracks.some((track) => {
+      if (track.locked) return false;
+      return track.clips.some((clip) => {
+        const clipStart = clip.startTime;
+        const clipEnd = clip.startTime + clip.duration;
+        return playheadPosition > clipStart + epsilon && playheadPosition < clipEnd - epsilon;
+      });
+    });
+  }, [playheadPosition, project.tracks]);
+
+  const handleSplitAtPlayhead = () => {
+    splitClipsAtPlayhead();
   };
 
   return (
     <div
       className={`timeline-toolbar flex items-center gap-3 px-4 py-2 border-b border-gray-700 ${className}`}
       style={{
-        height: '48px',
-        backgroundColor: '#252525',
+        height: "48px",
+        backgroundColor: "#252525",
       }}
     >
       {/* Current Time Display */}
       <div className="flex items-center gap-2">
         <span className="text-xs text-gray-400">时间:</span>
-        <span className="text-sm font-mono text-white">
-          {formatTime(playheadPosition)}
-        </span>
+        <span className="text-sm font-mono text-white">{formatTime(playheadPosition)}</span>
       </div>
 
       {/* Divider */}
@@ -91,12 +107,44 @@ const TimelineToolbar: React.FC<TimelineToolbarProps> = ({ className = '' }) => 
           onClick={toggleSnap}
           className={`px-3 py-1 text-xs rounded transition-colors ${
             snapEnabled
-              ? 'bg-blue-600 hover:bg-blue-700 text-white'
-              : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+              ? "bg-blue-600 hover:bg-blue-700 text-white"
+              : "bg-gray-700 hover:bg-gray-600 text-gray-300"
           }`}
-          title={snapEnabled ? '吸附已启用' : '吸附已禁用'}
+          title={snapEnabled ? "吸附已启用" : "吸附已禁用"}
         >
-          {snapEnabled ? '🧲 吸附' : '吸附'}
+          {snapEnabled ? "🧲 吸附" : "吸附"}
+        </button>
+      </div>
+
+      {/* Divider */}
+      <div className="h-6 w-px bg-gray-600" />
+
+      {/* Split Controls */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleSplitAtPlayhead}
+          disabled={!canSplitAtPlayhead}
+          aria-label="在红线位置拆分素材"
+          className="w-8 h-8 bg-amber-700 hover:bg-amber-600 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors inline-flex items-center justify-center"
+          title="在红线位置拆分素材"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="6" cy="6" r="3" />
+            <circle cx="6" cy="18" r="3" />
+            <path d="M20 4 8.5 15.5" />
+            <path d="m8.5 8.5 4 4" />
+            <path d="M20 20 13 13" />
+          </svg>
         </button>
       </div>
 

@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
-import { useTimelineStore } from '@/store/timelineStore';
-import { useMediaLibrary } from '@/hooks/useMediaLibrary';
-import { open } from '@tauri-apps/plugin-dialog';
+import { useEffect } from "react";
+import { useTimelineStore } from "@/store/timelineStore";
+import { useMediaLibrary } from "@/hooks/useMediaLibrary";
+import { open } from "@tauri-apps/plugin-dialog";
 
 /**
  * 媒体库面板组件
@@ -32,8 +32,8 @@ export function MediaLibraryPanel() {
         multiple: true,
         filters: [
           {
-            name: 'Media Files',
-            extensions: ['mp4', 'avi', 'mov', 'mkv', 'mp3', 'wav', 'jpg', 'png'],
+            name: "Media Files",
+            extensions: ["mp4", "avi", "mov", "mkv", "mp3", "wav", "jpg", "png"],
           },
         ],
       });
@@ -50,17 +50,17 @@ export function MediaLibraryPanel() {
         }
       }
     } catch (err) {
-      console.error('Failed to open file dialog:', err);
+      console.error("Failed to open file dialog:", err);
     }
   };
 
   // 处理删除媒体文件
   const handleDeleteMedia = async (mediaId: string) => {
-    if (confirm('确定要删除这个媒体文件吗？')) {
+    if (confirm("确定要删除这个媒体文件吗？")) {
       try {
         await deleteMedia(mediaId);
       } catch (err) {
-        console.error('Failed to delete media:', err);
+        console.error("Failed to delete media:", err);
       }
     }
   };
@@ -69,9 +69,9 @@ export function MediaLibraryPanel() {
   const handleCleanup = async () => {
     try {
       await cleanupOldFiles();
-      alert('清理完成');
+      alert("清理完成");
     } catch (err) {
-      console.error('Failed to cleanup:', err);
+      console.error("Failed to cleanup:", err);
     }
   };
 
@@ -81,7 +81,7 @@ export function MediaLibraryPanel() {
         <h3>媒体库</h3>
         <div className="header-actions">
           <button onClick={handleAddMedia} disabled={isLoading}>
-            {isLoading ? '加载中...' : '添加媒体'}
+            {isLoading ? "加载中..." : "添加媒体"}
           </button>
           <button onClick={handleCleanup} disabled={isLoading}>
             清理过期文件
@@ -109,27 +109,28 @@ export function MediaLibraryPanel() {
                 className="media-item"
                 draggable
                 onDragStart={(e) => {
-                  e.dataTransfer.effectAllowed = 'copy';
-                  e.dataTransfer.setData('application/json', JSON.stringify({
-                    dragType: 'media',  // 用于区分是媒体还是片段
-                    type: media.type,   // 媒体类型：video/audio/image
-                    id: media.id,
-                    name: media.name,
-                    path: media.path,
-                    duration: media.duration,
-                    width: media.width,
-                    height: media.height,
-                    fps: media.fps,
-                  }));
+                  e.dataTransfer.effectAllowed = "copy";
+                  e.dataTransfer.setData(
+                    "application/json",
+                    JSON.stringify({
+                      dragType: "media", // 用于区分是媒体还是片段
+                      type: media.type, // 媒体类型：video/audio/image
+                      id: media.id,
+                      name: media.name,
+                      path: media.path,
+                      duration: media.duration,
+                      width: media.width,
+                      height: media.height,
+                      fps: media.fps,
+                    }),
+                  );
                 }}
               >
                 <div className="media-info">
                   <div className="media-name">{media.name}</div>
                   <div className="media-meta">
                     <span className="media-type">{media.type}</span>
-                    <span className="media-duration">
-                      {media.duration.toFixed(2)}s
-                    </span>
+                    <span className="media-duration">{media.duration.toFixed(2)}s</span>
                     {media.width && media.height && (
                       <span className="media-resolution">
                         {media.width}x{media.height}

@@ -237,8 +237,8 @@ describe('getFileType - 对象参数化', () => {
 
 ```typescript
 import { describe, it, expect } from 'vitest';
-import { addItemsToFolder, removeItemFromFolder } from '@/utils/mediaOperations';
-import type { MediaItem, MediaFile, MediaFolder } from '@/utils/mediaOperations';
+import { addItemsToFolder, removeItemFromFolder } from '@/utils/media/mediaOperations';
+import type { MediaItem, MediaFile, MediaFolder } from '@/utils/media/mediaOperations';
 
 describe('addItemsToFolder', () => {
   it('should add items to root', () => {
@@ -400,3 +400,4 @@ pnpm test:coverage
 - [Mock 使用示例](./MOCK_USAGE_EXAMPLE.md)
 - [测试指南](./README.md)
 - [最佳实践](./BEST_PRACTICES.md)
+

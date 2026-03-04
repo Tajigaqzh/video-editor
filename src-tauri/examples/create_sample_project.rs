@@ -168,13 +168,19 @@ fn main() -> anyhow::Result<()> {
     video_editor_lib::project::save_project(&project, output_path, options)?;
 
     println!("✅ Sample project created: {}", output_path);
-    println!("📦 File size: {} bytes", std::fs::metadata(output_path)?.len());
+    println!(
+        "📦 File size: {} bytes",
+        std::fs::metadata(output_path)?.len()
+    );
     println!("🔐 Password: demo123");
     println!("📝 Project name: Sample Video Project");
 
     // 验证文件
     let is_valid = video_editor_lib::project::validate_hpve_file(output_path)?;
-    println!("✓ File validation: {}", if is_valid { "PASSED" } else { "FAILED" });
+    println!(
+        "✓ File validation: {}",
+        if is_valid { "PASSED" } else { "FAILED" }
+    );
 
     // 尝试加载文件
     match video_editor_lib::project::load_project(output_path, Some("demo123")) {

@@ -1,4 +1,18 @@
-import { invoke } from '@tauri-apps/api/core';
+/**
+ * 媒体管理：与 Tauri 后端交互的媒体文件操作工具。
+ * 主要负责 temp 目录管理与媒体基础类型判断。
+ */
+import { invoke } from "@tauri-apps/api/core";
+
+export interface TempCleanupOptions {
+  maxSizeBytes?: number;
+  ttlDays?: number;
+}
+
+const buildError = (message: string, error: unknown): Error =>
+  new Error(message, {
+    cause: error instanceof Error ? error : undefined,
+  });
 
 /**
  * 媒体文件管理工具
@@ -15,12 +29,12 @@ import { invoke } from '@tauri-apps/api/core';
  */
 export async function copyMediaToTemp(sourcePath: string): Promise<string> {
   try {
-    const relativePath = await invoke<string>('copy_media_to_temp', {
+    const relativePath = await invoke<string>("copy_media_to_temp", {
       sourcePath,
     });
     return relativePath;
   } catch (error) {
-    throw new Error(`Failed to copy media: ${error}`);
+    throw buildError(`Failed to copy media: ${String(error)}`, error);
   }
 }
 
@@ -30,24 +44,30 @@ export async function copyMediaToTemp(sourcePath: string): Promise<string> {
  */
 export async function getTempSize(): Promise<number> {
   try {
-    const size = await invoke<number>('get_temp_size');
+    const size = await invoke<number>("get_temp_size");
     return size;
   } catch (error) {
-    throw new Error(`Failed to get temp size: ${error}`);
+    throw buildError(`Failed to get temp size: ${String(error)}`, error);
   }
 }
 
 /**
  * 清理 temp 文件夹中的过期文件
  * @param keepFiles 要保留的文件相对路径列表
+ * @param options 可选清理策略（最大缓存大小 / TTL 天数）
  */
-export async function cleanupTempFiles(keepFiles: string[]): Promise<void> {
+export async function cleanupTempFiles(
+  keepFiles: string[],
+  options: TempCleanupOptions = {},
+): Promise<void> {
   try {
-    await invoke('cleanup_temp_files', {
+    await invoke("cleanup_temp_files", {
       keepFiles,
+      maxSizeBytes: options.maxSizeBytes,
+      ttlDays: options.ttlDays,
     });
   } catch (error) {
-    throw new Error(`Failed to cleanup temp: ${error}`);
+    throw buildError(`Failed to cleanup temp: ${String(error)}`, error);
   }
 }
 
@@ -57,13 +77,13 @@ export async function cleanupTempFiles(keepFiles: string[]): Promise<void> {
  * @returns 格式化后的大小字符串
  */
 export function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  
+  if (bytes === 0) return "0 B";
+
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
-  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+
+  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
 }
 
 /**
@@ -72,8 +92,8 @@ export function formatFileSize(bytes: number): string {
  * @returns 扩展名（不含点）
  */
 export function getFileExtension(filePath: string): string {
-  const parts = filePath.split('.');
-  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
+  const parts = filePath.split(".");
+  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "";
 }
 
 /**
@@ -81,7 +101,7 @@ export function getFileExtension(filePath: string): string {
  */
 export function isVideoFile(filePath: string): boolean {
   const ext = getFileExtension(filePath);
-  const videoExts = ['mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv', 'webm', 'ts', 'm3u8'];
+  const videoExts = ["mp4", "avi", "mov", "mkv", "flv", "wmv", "webm", "ts", "m3u8"];
   return videoExts.includes(ext);
 }
 
@@ -90,7 +110,7 @@ export function isVideoFile(filePath: string): boolean {
  */
 export function isAudioFile(filePath: string): boolean {
   const ext = getFileExtension(filePath);
-  const audioExts = ['mp3', 'wav', 'aac', 'flac', 'ogg', 'm4a', 'wma'];
+  const audioExts = ["mp3", "wav", "aac", "flac", "ogg", "m4a", "wma"];
   return audioExts.includes(ext);
 }
 
@@ -99,16 +119,16 @@ export function isAudioFile(filePath: string): boolean {
  */
 export function isImageFile(filePath: string): boolean {
   const ext = getFileExtension(filePath);
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
+  const imageExts = ["jpg", "jpeg", "png", "gif", "bmp", "webp", "svg"];
   return imageExts.includes(ext);
 }
 
 /**
  * 获取媒体文件类型
  */
-export function getMediaType(filePath: string): 'video' | 'audio' | 'image' | 'unknown' {
-  if (isVideoFile(filePath)) return 'video';
-  if (isAudioFile(filePath)) return 'audio';
-  if (isImageFile(filePath)) return 'image';
-  return 'unknown';
+export function getMediaType(filePath: string): "video" | "audio" | "image" | "unknown" {
+  if (isVideoFile(filePath)) return "video";
+  if (isAudioFile(filePath)) return "audio";
+  if (isImageFile(filePath)) return "image";
+  return "unknown";
 }

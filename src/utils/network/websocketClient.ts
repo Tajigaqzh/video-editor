@@ -1,5 +1,6 @@
 /**
- * WebSocket 客户端 - 用于接收视频帧流
+ * 网络层：视频帧流 WebSocket 客户端。
+ * 负责连接、收帧、完成/错误回调与连接状态管理。
  */
 
 export interface FrameMessage {
@@ -23,13 +24,13 @@ export class VideoStreamClient {
   /**
    * 连接到 WebSocket 服务器
    */
-  async connect(url: string = 'ws://127.0.0.1:9001'): Promise<void> {
+  async connect(url: string = "ws://127.0.0.1:9001"): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
         this.ws = new WebSocket(url);
 
         this.ws.onopen = () => {
-          console.log('✅ WebSocket connected');
+          console.log("✅ WebSocket connected");
           resolve();
         };
 
@@ -37,26 +38,26 @@ export class VideoStreamClient {
           try {
             const data = JSON.parse(event.data);
 
-            if (data.type === 'done') {
-              console.log('✅ Stream finished');
+            if (data.type === "done") {
+              console.log("✅ Stream finished");
               this.onDone?.();
             } else if (data.timestamp !== undefined && data.frame_data) {
               // 这是一个帧消息
               this.onFrame?.(data);
             }
           } catch (error) {
-            console.error('Failed to parse message:', error);
+            console.error("Failed to parse message:", error);
           }
         };
 
         this.ws.onerror = (error) => {
-          console.error('❌ WebSocket error:', error);
-          this.onError?.('WebSocket error');
+          console.error("❌ WebSocket error:", error);
+          this.onError?.("WebSocket error");
           reject(error);
         };
 
         this.ws.onclose = () => {
-          console.log('WebSocket closed');
+          console.log("WebSocket closed");
         };
       } catch (error) {
         reject(error);
@@ -69,12 +70,12 @@ export class VideoStreamClient {
    */
   play(command: PlayCommand): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.error('WebSocket not connected');
+      console.error("WebSocket not connected");
       return;
     }
 
     this.ws.send(JSON.stringify(command));
-    console.log('📤 Play command sent:', command);
+    console.log("📤 Play command sent:", command);
   }
 
   /**

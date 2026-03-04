@@ -97,7 +97,7 @@ it('should handle multiple files', () => {
 ### Testing with Mock Data
 ```typescript
 import { mockMediaItems } from '@/test/utils/mockData';
-import { addItemsToFolder } from '@/utils/mediaOperations';
+import { addItemsToFolder } from '@/utils/media/mediaOperations';
 
 it('should add items to folder', () => {
   const newFile = createTestMediaFile();
@@ -116,3 +116,4 @@ it('should render media item', () => {
   expect(screen.getByText('sample-video.mp4')).toBeInTheDocument();
 });
 ```
+

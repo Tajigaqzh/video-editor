@@ -1,4 +1,7 @@
-// Media data operation utilities
+/**
+ * 媒体库树结构操作工具。
+ * 提供对文件夹树的查找、插入、删除等纯函数操作。
+ */
 
 export interface MediaFile {
   id: string;
@@ -39,12 +42,13 @@ export const findFolder = (items: MediaItem[], folderId: string): MediaFolder | 
 export const addItemsToFolder = (
   items: MediaItem[],
   folderId: string | null,
-  newItems: MediaItem[]
+  newItems: MediaItem[],
 ): MediaItem[] => {
   if (!folderId) {
     return [...items, ...newItems];
   }
 
+  // 保持不可变更新，确保 React 状态比较可正确触发更新。
   return items.map((item) => {
     if (item.id === folderId && item.type === "folder") {
       return {
@@ -53,11 +57,7 @@ export const addItemsToFolder = (
       } as MediaFolder;
     }
     if (item.type === "folder") {
-      const updatedChildren = addItemsToFolder(
-        (item as MediaFolder).children,
-        folderId,
-        newItems
-      );
+      const updatedChildren = addItemsToFolder((item as MediaFolder).children, folderId, newItems);
       return {
         ...item,
         children: updatedChildren,
@@ -70,10 +70,7 @@ export const addItemsToFolder = (
 /**
  * Remove an item from the media items tree
  */
-export const removeItemFromFolder = (
-  items: MediaItem[],
-  itemId: string
-): MediaItem[] => {
+export const removeItemFromFolder = (items: MediaItem[], itemId: string): MediaItem[] => {
   return items
     .filter((item) => item.id !== itemId)
     .map((item) => {

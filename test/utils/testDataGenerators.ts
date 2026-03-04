@@ -1,13 +1,13 @@
-import type { MediaFile, MediaFolder, MediaItem } from '@/utils/mediaOperations';
+import type { MediaFile, MediaFolder, MediaItem } from "@/utils/media/mediaOperations";
 
 /**
  * Generate a test MediaFile with default or custom properties
  */
 export function createTestMediaFile(overrides?: Partial<MediaFile>): MediaFile {
   const id = overrides?.id || crypto.randomUUID();
-  const name = overrides?.name || 'test-video.mp4';
-  const type = overrides?.type || 'video';
-  
+  const name = overrides?.name || "test-video.mp4";
+  const type = overrides?.type || "video";
+
   return {
     id,
     name,
@@ -23,12 +23,12 @@ export function createTestMediaFile(overrides?: Partial<MediaFile>): MediaFile {
  */
 export function createTestMediaFolder(overrides?: Partial<MediaFolder>): MediaFolder {
   const id = overrides?.id || crypto.randomUUID();
-  const name = overrides?.name || 'Test Folder';
-  
+  const name = overrides?.name || "Test Folder";
+
   return {
     id,
     name,
-    type: 'folder',
+    type: "folder",
     children: overrides?.children || [],
     ...overrides,
   };
@@ -37,12 +37,15 @@ export function createTestMediaFolder(overrides?: Partial<MediaFolder>): MediaFo
 /**
  * Generate multiple test media files
  */
-export function createTestMediaFiles(count: number, baseOverrides?: Partial<MediaFile>): MediaFile[] {
-  return Array.from({ length: count }, (_, index) => 
+export function createTestMediaFiles(
+  count: number,
+  baseOverrides?: Partial<MediaFile>,
+): MediaFile[] {
+  return Array.from({ length: count }, (_, index) =>
     createTestMediaFile({
       ...baseOverrides,
       name: baseOverrides?.name || `test-file-${index + 1}.mp4`,
-    })
+    }),
   );
 }
 
@@ -50,15 +53,15 @@ export function createTestMediaFiles(count: number, baseOverrides?: Partial<Medi
  * Generate a nested folder structure for testing
  */
 export function createNestedFolderStructure(): MediaItem[] {
-  const childFile = createTestMediaFile({ name: 'nested-video.mp4' });
-  const childFolder = createTestMediaFolder({ 
-    name: 'Child Folder',
-    children: [childFile]
+  const childFile = createTestMediaFile({ name: "nested-video.mp4" });
+  const childFolder = createTestMediaFolder({
+    name: "Child Folder",
+    children: [childFile],
   });
   const parentFolder = createTestMediaFolder({
-    name: 'Parent Folder',
-    children: [childFolder]
+    name: "Parent Folder",
+    children: [childFolder],
   });
-  
+
   return [parentFolder];
 }

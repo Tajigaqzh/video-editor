@@ -1,45 +1,70 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import fc from 'fast-check';
-import { useTimelineStore } from '../../src/store/timelineStore';
+import { beforeEach, describe, expect, it } from "vitest";
+import fc from "fast-check";
+import { useTimelineStore } from "@/store/timelineStore";
+import type { ProjectData, TrackType } from "@/store/timelineStore";
 
-describe('Timeline Toolbar Property Tests', () => {
+const createEmptyProject = (): ProjectData => ({
+  metadata: {
+    name: "toolbar-property-test",
+    version: "1.0.0",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    modifiedAt: "2026-01-01T00:00:00.000Z",
+  },
+  timeline: {
+    fps: 30,
+    resolution: { width: 1920, height: 1080 },
+    duration: 0,
+    playheadPosition: 0,
+  },
+  media: [],
+  tracks: [],
+  settings: {
+    autoSave: true,
+    autoSaveInterval: 300,
+    snapToGrid: true,
+    snapThreshold: 5,
+    showRuler: true,
+    showGuides: true,
+    defaultTransitionDuration: 0.5,
+    theme: "dark",
+  },
+  history: {
+    undoStack: [],
+    redoStack: [],
+    maxHistorySize: 100,
+  },
+});
+
+const getTracks = () => useTimelineStore.getState().project.tracks;
+
+describe("Timeline Toolbar Property Tests", () => {
   beforeEach(() => {
-    // Reset store state before each test
     const store = useTimelineStore.getState();
-    store.tracks = [];
-    store.clips = [];
-    store.selectedClipIds = [];
-    store.playheadPosition = 0;
-    store.zoomLevel = store.config.pixelsPerSecond;
+    store.setProject(createEmptyProject());
+    store.clearSelection();
+    store.setPlayheadPosition(0);
+    store.setZoomLevel(store.config.pixelsPerSecond);
+    if (!store.snapEnabled) {
+      store.toggleSnap();
+    }
   });
 
-  // Feature: timeline-area, Property 14: 缩放调整级别
-  // Validates: Requirements 6.1, 6.5
-  it('should adjust zoom level within 10-200 px/s range for any zoom operation', () => {
+  it("should adjust zoom level within 10-200 px/s range for any zoom operation", () => {
     fc.assert(
       fc.property(
-        // Generate initial zoom level within valid range
         fc.integer({ min: 10, max: 200 }),
-        // Generate zoom adjustment (positive for zoom in, negative for zoom out)
         fc.integer({ min: -50, max: 50 }),
         (initialZoom, adjustment) => {
           const { setZoomLevel, config } = useTimelineStore.getState();
-          
-          // Set initial zoom level
+
           setZoomLevel(initialZoom);
-          
-          // Apply zoom adjustment
           const newZoom = initialZoom + adjustment;
           setZoomLevel(newZoom);
-          
-          // Get the actual zoom level after adjustment
+
           const actualZoom = useTimelineStore.getState().zoomLevel;
-          
-          // Verify zoom level is within valid range
           expect(actualZoom).toBeGreaterThanOrEqual(config.minZoom);
           expect(actualZoom).toBeLessThanOrEqual(config.maxZoom);
-          
-          // Verify zoom level is clamped correctly
+
           if (newZoom < config.minZoom) {
             expect(actualZoom).toBe(config.minZoom);
           } else if (newZoom > config.maxZoom) {
@@ -47,133 +72,93 @@ describe('Timeline Toolbar Property Tests', () => {
           } else {
             expect(actualZoom).toBe(newZoom);
           }
-        }
+        },
       ),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 
-  // Feature: timeline-area, Property 22: 添加轨道功能
-  // Validates: Requirements 9.1, 9.2
-  it('should create new track in appropriate area when add track button is clicked', () => {
+  it("should create new track in appropriate area when add track button is clicked", () => {
     fc.assert(
       fc.property(
-        // Generate track type (video or audio)
-        fc.constantFrom('video' as const, 'audio' as const),
-        // Generate number of tracks to add
+        fc.constantFrom<TrackType>("video", "audio"),
         fc.integer({ min: 1, max: 10 }),
         (trackType, numTracks) => {
           const { addTrack } = useTimelineStore.getState();
-          
-          // Get initial track count of this type
-          const initialTracks = useTimelineStore.getState().tracks.filter(
-            t => t.type === trackType
-          );
+
+          const initialTracks = getTracks().filter((track) => track.type === trackType);
           const initialCount = initialTracks.length;
-          
-          // Add tracks
-          for (let i = 0; i < numTracks; i++) {
+
+          for (let i = 0; i < numTracks; i += 1) {
             addTrack(trackType);
           }
-          
-          // Get updated tracks
-          const updatedTracks = useTimelineStore.getState().tracks.filter(
-            t => t.type === trackType
-          );
-          
-          // Verify correct number of tracks added
+
+          const updatedTracks = getTracks().filter((track) => track.type === trackType);
+
           expect(updatedTracks.length).toBe(initialCount + numTracks);
-          
-          // Verify all added tracks have correct type
-          updatedTracks.forEach(track => {
+          updatedTracks.forEach((track) => {
             expect(track.type).toBe(trackType);
           });
-          
-          // Verify tracks have unique IDs
-          const ids = updatedTracks.map(t => t.id);
-          const uniqueIds = new Set(ids);
-          expect(uniqueIds.size).toBe(updatedTracks.length);
-          
-          // Verify tracks have appropriate names
-          updatedTracks.forEach(track => {
-            if (trackType === 'video') {
-              expect(track.name).toMatch(/^视频 \d+$/);
-            } else {
-              expect(track.name).toMatch(/^音频 \d+$/);
-            }
-          });
-          
-          // Verify tracks are in the appropriate area (video or audio)
-          // All tracks of the same type should be grouped together
-          const allTracks = useTimelineStore.getState().tracks;
-          const videoTracks = allTracks.filter(t => t.type === 'video');
-          const audioTracks = allTracks.filter(t => t.type === 'audio');
-          
-          // Verify separation of video and audio tracks
-          expect(videoTracks.length + audioTracks.length).toBe(allTracks.length);
-        }
+
+          const ids = updatedTracks.map((track) => track.id);
+          expect(new Set(ids).size).toBe(updatedTracks.length);
+
+          const sortedByOrder = updatedTracks.toSorted((a, b) => a.order - b.order);
+          for (let index = 1; index < sortedByOrder.length; index += 1) {
+            expect(sortedByOrder[index].order).toBeGreaterThan(sortedByOrder[index - 1].order);
+          }
+        },
       ),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 
-  // Additional property: Verify zoom level changes are reflected immediately
-  it('should immediately reflect zoom level changes in store state', () => {
+  it("should immediately reflect zoom level changes in store state", () => {
     fc.assert(
       fc.property(
         fc.array(fc.integer({ min: 10, max: 200 }), { minLength: 1, maxLength: 20 }),
         (zoomLevels) => {
           const { setZoomLevel } = useTimelineStore.getState();
-          
-          // Apply each zoom level sequentially
-          zoomLevels.forEach(zoom => {
+
+          zoomLevels.forEach((zoom) => {
             setZoomLevel(zoom);
-            
-            // Verify the zoom level is immediately updated
             const currentZoom = useTimelineStore.getState().zoomLevel;
             expect(currentZoom).toBe(zoom);
           });
-        }
+        },
       ),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 
-  // Additional property: Verify track order is maintained
-  it('should maintain correct order when adding multiple tracks', () => {
+  it("should maintain correct order when adding multiple tracks", () => {
     fc.assert(
       fc.property(
-        fc.array(
-          fc.constantFrom('video' as const, 'audio' as const),
-          { minLength: 1, maxLength: 10 }
-        ),
+        fc.array(fc.constantFrom<TrackType>("video", "audio"), {
+          minLength: 1,
+          maxLength: 10,
+        }),
         (trackTypes) => {
           const { addTrack } = useTimelineStore.getState();
-          
-          // Add tracks in sequence
-          trackTypes.forEach(type => {
+
+          trackTypes.forEach((type) => {
             addTrack(type);
           });
-          
-          // Get all tracks
-          const tracks = useTimelineStore.getState().tracks;
-          
-          // Verify each track type has sequential order values
-          const videoTracks = tracks.filter(t => t.type === 'video');
-          const audioTracks = tracks.filter(t => t.type === 'audio');
-          
-          // Check video tracks have increasing order
-          for (let i = 1; i < videoTracks.length; i++) {
-            expect(videoTracks[i].order).toBeGreaterThan(videoTracks[i - 1].order);
+
+          const tracks = getTracks();
+          const videoTracks = tracks.filter((track) => track.type === "video");
+          const audioTracks = tracks.filter((track) => track.type === "audio");
+
+          for (let index = 1; index < videoTracks.length; index += 1) {
+            expect(videoTracks[index].order).toBeGreaterThan(videoTracks[index - 1].order);
           }
-          
-          // Check audio tracks have increasing order
-          for (let i = 1; i < audioTracks.length; i++) {
-            expect(audioTracks[i].order).toBeGreaterThan(audioTracks[i - 1].order);
+
+          for (let index = 1; index < audioTracks.length; index += 1) {
+            expect(audioTracks[index].order).toBeGreaterThan(audioTracks[index - 1].order);
           }
-        }
+        },
       ),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 });

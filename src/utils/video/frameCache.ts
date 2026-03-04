@@ -1,6 +1,6 @@
 /**
  * 帧缓存管理服务（使用内存 + IndexedDB）
- * 
+ *
  * 缓存结构：
  * 内存缓存：快速访问
  * IndexedDB：持久化存储
@@ -22,32 +22,32 @@ export interface FrameMetadata {
 class FrameCacheManager {
   private memoryCache = new Map<string, string>(); // clipId_timestamp -> frameUrl
   private metadata = new Map<string, FrameMetadata>();
-  private dbName = 'video-editor-cache';
-  private storeName = 'frames';
+  private dbName = "video-editor-cache";
+  private storeName = "frames";
   private db: IDBDatabase | null = null;
 
   async init(): Promise<void> {
     try {
       // 初始化 IndexedDB
       const request = indexedDB.open(this.dbName, 1);
-      
+
       request.onerror = () => {
-        console.error('❌ IndexedDB 初始化失败');
+        console.error("❌ IndexedDB 初始化失败");
       };
 
       request.onsuccess = () => {
         this.db = request.result;
-        console.log('✅ IndexedDB 初始化完成');
+        console.log("✅ IndexedDB 初始化完成");
       };
 
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
         if (!db.objectStoreNames.contains(this.storeName)) {
-          db.createObjectStore(this.storeName, { keyPath: 'id' });
+          db.createObjectStore(this.storeName, { keyPath: "id" });
         }
       };
     } catch (error) {
-      console.error('❌ 缓存管理器初始化失败:', error);
+      console.error("❌ 缓存管理器初始化失败:", error);
     }
   }
 
@@ -55,19 +55,20 @@ class FrameCacheManager {
    * 保存帧到缓存
    */
   async saveFrame(clipId: string, timestamp: number, frameUrl: string): Promise<void> {
+    // 统一保留 0.1s 精度，确保缓存 key 与批量抽帧文件命名规则一致。
     const key = `${clipId}_${timestamp.toFixed(1)}`;
-    
+
     // 保存到内存缓存
     this.memoryCache.set(key, frameUrl);
-    
+
     // 保存到 IndexedDB
     if (this.db) {
       try {
-        const transaction = this.db.transaction([this.storeName], 'readwrite');
+        const transaction = this.db.transaction([this.storeName], "readwrite");
         const store = transaction.objectStore(this.storeName);
         store.put({ id: key, frameUrl, timestamp: Date.now() });
       } catch (error) {
-        console.error('❌ 保存帧到 IndexedDB 失败:', error);
+        console.error("❌ 保存帧到 IndexedDB 失败:", error);
       }
     }
   }
@@ -76,21 +77,22 @@ class FrameCacheManager {
    * 获取帧 URL
    */
   async getFrameUrl(clipId: string, timestamp: number): Promise<string | null> {
+    // 读取路径与写入路径必须使用同一 key 量化策略。
     const key = `${clipId}_${timestamp.toFixed(1)}`;
-    
+
     // 优先从内存缓存读取
     if (this.memoryCache.has(key)) {
       return this.memoryCache.get(key) || null;
     }
-    
+
     // 从 IndexedDB 读取
     if (this.db) {
       return new Promise((resolve) => {
         try {
-          const transaction = this.db!.transaction([this.storeName], 'readonly');
+          const transaction = this.db!.transaction([this.storeName], "readonly");
           const store = transaction.objectStore(this.storeName);
           const request = store.get(key);
-          
+
           request.onsuccess = () => {
             const result = request.result;
             if (result) {
@@ -100,17 +102,17 @@ class FrameCacheManager {
               resolve(null);
             }
           };
-          
+
           request.onerror = () => {
             resolve(null);
           };
         } catch (error) {
-          console.error('❌ 从 IndexedDB 读取失败:', error);
+          console.error("❌ 从 IndexedDB 读取失败:", error);
           resolve(null);
         }
       });
     }
-    
+
     return null;
   }
 
@@ -146,14 +148,14 @@ class FrameCacheManager {
         this.memoryCache.delete(key);
       }
     }
-    
+
     // 清除 IndexedDB
     if (this.db) {
       try {
-        const transaction = this.db.transaction([this.storeName], 'readwrite');
+        const transaction = this.db.transaction([this.storeName], "readwrite");
         const store = transaction.objectStore(this.storeName);
         const request = store.getAll();
-        
+
         request.onsuccess = () => {
           const results = request.result;
           for (const item of results) {
@@ -163,11 +165,11 @@ class FrameCacheManager {
           }
         };
       } catch (error) {
-        console.error('❌ 清除 IndexedDB 缓存失败:', error);
+        console.error("❌ 清除 IndexedDB 缓存失败:", error);
       }
     }
-    
-    console.log('✅ 缓存已清除:', clipId);
+
+    console.log("✅ 缓存已清除:", clipId);
   }
 }
 

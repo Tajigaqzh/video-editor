@@ -35,3 +35,5 @@ pbkdf2 = "0.12"
 zip = "0.6"
 chrono = { version = "0.4", features = ["serde"] }
 
+[dev-dependencies]
+tempfile = "3"

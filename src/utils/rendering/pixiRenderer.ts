@@ -1,5 +1,9 @@
-import { Application, Container, Graphics, Sprite, Texture, Filter } from 'pixi.js';
-import type { Clip } from '@/store/timelineStore';
+/**
+ * 渲染工具：基于 PixiJS 的预览渲染器封装。
+ * 当前实现为骨架版，保留图层与效果扩展入口。
+ */
+import { Application, Container, Graphics } from "pixi.js";
+import type { Clip } from "@/store/timelineStore";
 
 export interface RendererConfig {
   width: number;
@@ -15,7 +19,7 @@ export class PixiRenderer {
   private effectsLayer: Container;
   private overlayLayer: Container;
 
-  constructor(config: RendererConfig) {
+  constructor(_config: RendererConfig) {
     this.app = new Application();
     this.mainContainer = new Container();
     this.videoLayer = new Container();
@@ -60,7 +64,7 @@ export class PixiRenderer {
     return currentTime >= clip.startTime && currentTime < clipEnd;
   }
 
-  private renderClip(clip: Clip, currentTime: number): void {
+  private renderClip(_clip: Clip, _currentTime: number): void {
     // Placeholder rendering - in production, load actual video frames
     const graphics = new Graphics();
     graphics.rect(0, 0, this.app.screen.width, this.app.screen.height);
@@ -69,11 +73,12 @@ export class PixiRenderer {
   }
 
   addOverlay(text: string, x: number, y: number): void {
+    console.log(text, x, y);
     // Add text or graphic overlays
     // Implementation for titles, watermarks, etc.
   }
 
-  applyEffect(effectType: string, params?: any): void {
+  applyEffect(_effectType: string, _params?: unknown): void {
     // Apply visual effects using PixiJS filters
     // Examples: blur, color adjustment, transitions
   }

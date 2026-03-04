@@ -1,31 +1,58 @@
-import React, { useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { useTimelineStore } from '@/store/timelineStore';
-import TimelineToolbar from './TimelineToolbar';
-import Timescale from './Timescale';
-import Playhead from './Playhead';
-import Track from './Track';
+import React, { useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useTimelineStore } from "@/store/timelineStore";
+import { calculateSnapPosition, checkClipCollision } from "@/utils/timeline/timelineUtils";
+import { enqueueProxyTranscode } from "@/services/proxyQueue";
+import { enqueueWaveformGeneration } from "@/services/waveformQueue";
+import { enqueueThumbnailGeneration } from "@/services/thumbnailQueue";
+import { selectProxyProfileForMedia } from "@/utils/media/proxyProfile";
+import TimelineToolbar from "./TimelineToolbar";
+import Timescale from "./Timescale";
+import Playhead from "./Playhead";
+import Track from "./Track";
 
 interface TimelineProps {
   className?: string;
   style?: React.CSSProperties;
 }
 
+const handleTimelineDrop = () => {
+  console.log("Timeline container drop event");
+};
+
+const handleTimelineDragOver = (event: React.DragEvent) => {
+  event.preventDefault();
+  let dropEffect: DataTransfer["dropEffect"] = "copy";
+
+  try {
+    const raw = event.dataTransfer.getData("application/json");
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (data?.dragType === "clip") {
+        dropEffect = "move";
+      }
+    }
+  } catch {
+    // ignore parse errors
+  }
+
+  event.dataTransfer.dropEffect = dropEffect;
+};
+
 export interface TimelineRef {
   play: () => void;
   pause: () => void;
   seek: (time: number) => void;
-  addTrack: (type: 'video' | 'audio') => void;
+  addTrack: (type: "video" | "audio") => void;
   removeTrack: (trackId: string) => void;
 }
 
 const Timeline = React.forwardRef<TimelineRef, TimelineProps>(
-  ({ className = '', style = {} }, ref) => {
+  ({ className = "", style = {} }, ref) => {
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const timelineBodyRef = useRef<HTMLDivElement>(null);
     const [scrollLeft, setScrollLeft] = useState(0);
-    
-    // Connect to timeline store
+
     const {
       project,
       zoomLevel,
@@ -33,29 +60,57 @@ const Timeline = React.forwardRef<TimelineRef, TimelineProps>(
       removeTrack,
       setPlayheadPosition,
       getTotalDuration,
+      playheadPosition,
+      snapEnabled,
+      config,
     } = useTimelineStore();
 
     const tracks = project.tracks;
-
-    // Calculate total duration for timeline
     const totalDuration = getTotalDuration();
-    // Display duration - minimum 60 seconds as per requirement 1.3
     const displayDuration = Math.max(60, totalDuration);
+    const viewportWidth = scrollContainerRef.current?.clientWidth ?? 0;
+    const visibleStart = Math.max(0, scrollLeft / zoomLevel - 2);
+    const visibleEnd = (scrollLeft + viewportWidth) / zoomLevel + 2;
 
-    // Expose methods via ref
+    React.useEffect(() => {
+      if (viewportWidth <= 0 || zoomLevel <= 0) return;
+      const mediaById = new Map(project.media.map((media) => [media.id, media]));
+
+      for (const track of tracks) {
+        if (track.type !== "video") continue;
+
+        for (const clip of track.clips) {
+          const clipEnd = clip.startTime + clip.duration;
+          if (clipEnd < visibleStart || clip.startTime > visibleEnd) {
+            continue;
+          }
+
+          const media = mediaById.get(clip.mediaId);
+          if (!media || media.type !== "video" || !media.originalPath) {
+            continue;
+          }
+
+          if (media.thumbnailStatus === "none" || media.thumbnailStatus === "failed") {
+            enqueueThumbnailGeneration(media.id, media.originalPath, {
+              mode: "first_screen",
+              priority: 20,
+            });
+          }
+        }
+      }
+    }, [project.media, tracks, viewportWidth, visibleEnd, visibleStart, zoomLevel]);
+
     React.useImperativeHandle(ref, () => ({
       play: () => {
-        // TODO: Implement play functionality
-        console.log('Play');
+        console.log("Play");
       },
       pause: () => {
-        // TODO: Implement pause functionality
-        console.log('Pause');
+        console.log("Pause");
       },
       seek: (time: number) => {
         setPlayheadPosition(time);
       },
-      addTrack: (type: 'video' | 'audio') => {
+      addTrack: (type: "video" | "audio") => {
         addTrack(type);
       },
       removeTrack: (trackId: string) => {
@@ -63,83 +118,56 @@ const Timeline = React.forwardRef<TimelineRef, TimelineProps>(
       },
     }));
 
-    // Handle scroll events
-    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-      // Store scroll position for timescale
-      // This enables requirements 8.1, 8.2 (scroll functionality)
-      const target = e.currentTarget;
-      setScrollLeft(target.scrollLeft);
+    const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
+      setScrollLeft(event.currentTarget.scrollLeft);
     };
 
-    // Handle wheel events for scrolling
-    const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
       if (!scrollContainerRef.current) return;
-
-      // Requirement 8.4: Vertical scroll with mouse wheel (no modifier)
-      // Requirement 8.5: Horizontal scroll with Shift + wheel
-      if (e.shiftKey) {
-        // Horizontal scroll
-        e.preventDefault();
-        scrollContainerRef.current.scrollLeft += e.deltaY;
-      }
-      // Vertical scroll is handled by default browser behavior
-    };
-
-    // Handle drop from media library
-    const handleTrackDrop = (e: React.DragEvent, trackId: string) => {
-      e.preventDefault();
-      e.stopPropagation();
-      
-      console.log('handleTrackDrop called for track:', trackId);
-      
-      try {
-        const data = e.dataTransfer.getData("application/json");
-        console.log('Drop data:', data);
-        
-        if (!data) {
-          console.warn('No data in drop event');
-          return;
-        }
-        
-        const dragData = JSON.parse(data);
-        console.log('Parsed drag data:', dragData);
-        
-        // 检查是拖动片段还是从素材库拖入新素材
-        const dragType = dragData.dragType || 'media'; // 默认为 'media'
-        
-        if (dragType === 'clip') {
-          // 拖动现有片段
-          handleClipMove(dragData, e, trackId);
-        } else if (dragType === 'media') {
-          // 从素材库拖入新素材
-          handleMediaDrop(dragData, e, trackId);
-        } else {
-          console.warn('Unknown drag type:', dragType);
-        }
-      } catch (error) {
-        console.error('❌ Error handling drop:', error);
+      if (event.shiftKey) {
+        event.preventDefault();
+        scrollContainerRef.current.scrollLeft += event.deltaY;
       }
     };
 
-    // 处理片段移动
-    const handleClipMove = (dragData: any, e: React.DragEvent, targetTrackId: string) => {
+    const handleClipMove = (dragData: any, event: React.DragEvent, targetTrackId: string) => {
       const { clipId } = dragData;
-      
-      // 计算新的开始时间
-      const scrollLeft = scrollContainerRef.current?.scrollLeft || 0;
+      const allClips = project.tracks.flatMap((t) => t.clips);
+      const movingClip = allClips.find((clip) => clip.id === clipId);
+      if (!movingClip) return;
+
+      const currentScrollLeft = scrollContainerRef.current?.scrollLeft || 0;
       const timelineRect = scrollContainerRef.current?.getBoundingClientRect();
-      
-      if (!timelineRect) {
-        console.warn('Timeline scroll container rect not found');
+      if (!timelineRect) return;
+
+      const dropX = event.clientX - timelineRect.left + currentScrollLeft - 120;
+      const baseTime = Math.max(0, dropX / zoomLevel);
+      const effectiveSnapPx = Math.max(config.snapThreshold, 12);
+      const snappedTime = calculateSnapPosition(
+        baseTime,
+        movingClip.id,
+        targetTrackId,
+        movingClip.duration,
+        allClips,
+        playheadPosition,
+        snapEnabled,
+        effectiveSnapPx,
+        zoomLevel,
+      );
+      const newStartTime = Math.max(0, snappedTime);
+
+      if (
+        checkClipCollision(
+          movingClip.id,
+          targetTrackId,
+          newStartTime,
+          movingClip.duration,
+          allClips,
+        )
+      ) {
         return;
       }
-      
-      const dropX = e.clientX - timelineRect.left + scrollLeft - 120;
-      const newStartTime = Math.max(0, dropX / zoomLevel);
-      
-      console.log('Moving clip:', clipId, 'to time:', newStartTime);
-      
-      // 更新片段位置
+
       const { updateClip } = useTimelineStore.getState();
       updateClip(clipId, {
         trackId: targetTrackId,
@@ -147,76 +175,41 @@ const Timeline = React.forwardRef<TimelineRef, TimelineProps>(
       });
     };
 
-    // 处理从素材库拖入新素材
-    const handleMediaDrop = async (mediaItem: any, e: React.DragEvent, trackId: string): Promise<void> => {
-      console.log('📥 handleMediaDrop called with mediaItem:', mediaItem);
-      
-      // 只处理视频和音频文件
-      if (mediaItem.type !== 'video' && mediaItem.type !== 'audio') {
-        console.warn('只支持视频和音频文件，当前类型:', mediaItem.type);
-        return;
-      }
-      
-      // 检查轨道类型是否匹配
-      const track = tracks.find(t => t.id === trackId);
-      if (!track) {
-        console.warn('Track not found:', trackId);
-        return;
-      }
-      
-      console.log('Track type:', track.type, 'Media type:', mediaItem.type);
-      
+    const handleMediaDrop = async (mediaItem: any, event: React.DragEvent, trackId: string) => {
+      if (mediaItem.type !== "video" && mediaItem.type !== "audio") return;
+
+      const track = tracks.find((t) => t.id === trackId);
+      if (!track) return;
+
       if (track.type !== mediaItem.type) {
-        alert(`${mediaItem.type === 'video' ? '视频' : '音频'}文件只能拖放到${mediaItem.type === 'video' ? '视频' : '音频'}轨道`);
+        const mediaTypeLabel = mediaItem.type === "video" ? "视频" : "音频";
+        alert(`${mediaTypeLabel} 文件只能拖放到 ${mediaTypeLabel} 轨道`);
         return;
       }
-      
-      // 计算拖放位置对应的时间
-      // 如果轨道是空的，自动放在 00:00 位置
+
       const trackClips = track.clips;
-      let dropTime = 0;
-      
-      if (trackClips.length > 0) {
-        // 轨道已有片段，根据鼠标位置计算时间
-        const scrollLeft = scrollContainerRef.current?.scrollLeft || 0;
-        const timelineRect = scrollContainerRef.current?.getBoundingClientRect();
-        
-        if (!timelineRect) {
-          console.warn('Timeline scroll container rect not found');
-          return;
-        }
-        
-        // 计算鼠标相对于时间轴内容区域的位置
-        // 120px 是轨道头部的宽度
-        const dropX = e.clientX - timelineRect.left + scrollLeft - 120;
-        dropTime = Math.max(0, dropX / zoomLevel);
-        
-        console.log('Drop calculation:', {
-          clientX: e.clientX,
-          timelineLeft: timelineRect.left,
-          scrollLeft,
-          dropX,
-          dropTime,
-          zoomLevel
-        });
-      } else {
-        console.log('Empty track, placing clip at 00:00');
-      }
-      
-      // 获取视频信息并添加媒体到 store
+      const lastEnd = trackClips.reduce(
+        (maxEnd, clip) => Math.max(maxEnd, clip.startTime + clip.duration),
+        0,
+      );
+      const dropTime = lastEnd;
+
       let duration = 5;
       const { addMedia, addClip } = useTimelineStore.getState();
-      
+
       try {
-        const videoInfo = await invoke<any>('get_video_info', {
+        const videoInfo = await invoke<any>("get_video_info", {
           path: mediaItem.path,
         });
         duration = videoInfo.duration || 5;
-        
-        // 检查媒体是否已在 store 中
-        const existingMedia = project.media.find(m => m.id === mediaItem.id);
+
+        const existingMedia = project.media.find((m) => m.id === mediaItem.id);
         if (!existingMedia) {
-          // 添加媒体到 store
+          const proxyProfile = selectProxyProfileForMedia({
+            width: videoInfo.width,
+            height: videoInfo.height,
+          });
+
           const newMedia = {
             id: mediaItem.id,
             name: mediaItem.name,
@@ -232,113 +225,129 @@ const Timeline = React.forwardRef<TimelineRef, TimelineProps>(
             createdAt: new Date().toISOString(),
             sampleRate: videoInfo.sample_rate,
             channels: videoInfo.channels,
+            proxyStatus: "none" as const,
+            proxyProfile,
+            proxyUpdatedAt: new Date().toISOString(),
+            waveformStatus: "none" as const,
+            waveformUpdatedAt: new Date().toISOString(),
           };
+
           addMedia(newMedia);
-          console.log('✅ Media added to store:', mediaItem.name);
+
+          if (newMedia.type === "video" && newMedia.originalPath) {
+            enqueueProxyTranscode(
+              newMedia.id,
+              newMedia.originalPath,
+              newMedia.proxyProfile ?? "medium",
+            );
+            enqueueThumbnailGeneration(newMedia.id, newMedia.originalPath, {
+              mode: "first_screen",
+              priority: 12,
+            });
+          }
+
+          if ((newMedia.type === "video" || newMedia.type === "audio") && newMedia.originalPath) {
+            enqueueWaveformGeneration(newMedia.id, newMedia.originalPath);
+          }
         }
-      } catch (err) {
-        console.warn('Failed to get video info:', err);
+      } catch (error) {
+        console.warn("Failed to get video info:", error);
       }
-      
+
       const newClip = {
         id: `clip_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         trackId,
-        mediaId: mediaItem.id, // 使用媒体 ID
+        mediaId: mediaItem.id,
         startTime: dropTime,
         duration,
         trimStart: 0,
         trimEnd: duration,
-        position: { x: 0, y: 0 },      // HPVE 格式
-        scale: { x: 1.0, y: 1.0 },     // HPVE 格式
-        rotation: 0,                     // HPVE 格式
-        opacity: 1.0,                    // HPVE 格式
-        effects: [],                     // HPVE 格式
+        position: { x: 0, y: 0 },
+        scale: { x: 1, y: 1 },
+        rotation: 0,
+        opacity: 1,
+        effects: [],
       };
-      
-      console.log('📋 Creating clip with mediaId:', mediaItem.id);
-      console.log('📋 Full clip data:', newClip);
-      
+
       addClip(newClip);
-      
-      console.log('✅ Clip added successfully:', mediaItem.name, 'at', dropTime);
-      console.log('📋 Clip data:', newClip);
-      
-      // 立即抽取第一帧用于预览（仅视频轨道）
-      if (track.type === 'video') {
-        console.log('🎬 抽取第一帧用于预览:', mediaItem.name);
+
+      if (track.type === "video") {
         try {
-          await invoke<string>('stream_decode_frame', {
+          await invoke<string>("stream_decode_frame", {
             path: mediaItem.path,
-            timestamp: 0, // 抽取第一帧
+            timestamp: 0,
           });
-          console.log('✅ 第一帧抽取成功');
-        } catch (err) {
-          console.error('❌ 第一帧抽取失败:', err);
+        } catch (error) {
+          console.error("Failed to extract first frame:", error);
         }
       }
+
+      void event;
     };
 
-    // Handle drop on timeline container (fallback)
-    const handleTimelineDrop = () => {
-      console.log('Timeline container drop event');
-      // Let it bubble to track handlers
-    };
+    const handleTrackDrop = (event: React.DragEvent, trackId: string) => {
+      event.preventDefault();
+      event.stopPropagation();
 
-    const handleTimelineDragOver = (e: React.DragEvent) => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'copy';
-      // console.log('Timeline dragOver'); // 避免刷屏
+      try {
+        const data = event.dataTransfer.getData("application/json");
+        if (!data) return;
+
+        const dragData = JSON.parse(data);
+        const dragType = dragData.dragType || "media";
+
+        if (dragType === "clip") {
+          handleClipMove(dragData, event, trackId);
+        } else if (dragType === "media") {
+          void handleMediaDrop(dragData, event, trackId);
+        }
+      } catch (error) {
+        console.error("Error handling drop:", error);
+      }
     };
 
     return (
       <div
         className={`timeline-container flex flex-col h-full ${className}`}
         style={{
-          backgroundColor: '#1a1a1a',
-          color: '#ffffff',
+          backgroundColor: "#1a1a1a",
+          color: "#ffffff",
           ...style,
         }}
         onDragOver={handleTimelineDragOver}
         onDrop={handleTimelineDrop}
       >
-        {/* Toolbar Area */}
         <TimelineToolbar />
 
-        {/* Scrollable Content Area */}
         <div
           ref={scrollContainerRef}
           className="timeline-scroll-container flex-1 overflow-auto"
           onScroll={handleScroll}
           onWheel={handleWheel}
-          style={{
-            position: 'relative',
-          }}
+          style={{ position: "relative" }}
         >
-          {/* Timescale Area - Requirement 1.1, 5.2, 6.2, 6.3 */}
           <div
             className="timeline-header border-b border-gray-700"
             style={{
-              position: 'sticky',
+              position: "sticky",
               top: 0,
               zIndex: 10,
-              display: 'flex',
+              display: "flex",
             }}
           >
-            {/* Empty space for track headers */}
             <div
               style={{
-                width: '120px',
-                height: '40px',
-                backgroundColor: '#252525',
-                borderRight: '1px solid #333',
+                width: "120px",
+                height: "40px",
+                backgroundColor: "#252525",
+                borderRight: "1px solid #333",
                 flexShrink: 0,
-                position: 'sticky',
+                position: "sticky",
                 left: 0,
                 zIndex: 11,
               }}
             />
-            {/* Timescale */}
-            <div style={{ flex: 1, minWidth: '100%' }}>
+            <div style={{ flex: 1, minWidth: "100%" }}>
               <Timescale
                 duration={displayDuration}
                 zoomLevel={zoomLevel}
@@ -348,22 +357,20 @@ const Timeline = React.forwardRef<TimelineRef, TimelineProps>(
             </div>
           </div>
 
-          {/* Tracks Area */}
           <div
             ref={timelineBodyRef}
             className="timeline-body"
             style={{
-              minHeight: '400px',
-              position: 'relative',
+              minHeight: "400px",
+              position: "relative",
             }}
           >
-            {/* Track List - Placeholder for task 8 */}
             {tracks.length === 0 ? (
               <div
                 className="flex items-center justify-center"
                 style={{
-                  height: '200px',
-                  color: '#666',
+                  height: "200px",
+                  color: "#666",
                 }}
               >
                 <div className="text-center">
@@ -374,31 +381,29 @@ const Timeline = React.forwardRef<TimelineRef, TimelineProps>(
             ) : (
               <div className="tracks-container">
                 {tracks
-                  .sort((a, b) => b.order - a.order) // Higher order on top
+                  .toSorted((a, b) => b.order - a.order)
                   .map((track) => (
                     <Track
                       key={track.id}
                       track={track}
                       clips={track.clips}
                       zoomLevel={zoomLevel}
+                      visibleStart={visibleStart}
+                      visibleEnd={visibleEnd}
                       onDrop={handleTrackDrop}
                     />
                   ))}
               </div>
             )}
 
-            {/* Playhead - Task 7: Playhead component */}
-            <Playhead
-              scrollContainerRef={scrollContainerRef}
-              timelineBodyRef={timelineBodyRef}
-            />
+            <Playhead scrollContainerRef={scrollContainerRef} timelineBodyRef={timelineBodyRef} />
           </div>
         </div>
       </div>
     );
-  }
+  },
 );
 
-Timeline.displayName = 'Timeline';
+Timeline.displayName = "Timeline";
 
 export default Timeline;

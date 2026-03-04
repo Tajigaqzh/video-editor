@@ -1,13 +1,17 @@
-import { useCallback, useState } from 'react';
-import { useTimelineStore, Media, MediaType } from '@/store/timelineStore';
+import { useCallback, useState } from "react";
+import { useTimelineStore, Media, MediaType } from "@/store/timelineStore";
 import {
   copyMediaToTemp,
   getTempSize,
   cleanupTempFiles,
   getMediaType,
   formatFileSize,
-} from '@/utils/mediaManager';
-import { invoke } from '@tauri-apps/api/core';
+} from "@/utils/media/mediaManager";
+import { invoke } from "@tauri-apps/api/core";
+import { enqueueProxyTranscode } from "@/services/proxyQueue";
+import { enqueueWaveformGeneration } from "@/services/waveformQueue";
+import { enqueueThumbnailGeneration } from "@/services/thumbnailQueue";
+import { selectProxyProfileForMedia } from "@/utils/media/proxyProfile";
 
 /**
  * 媒体库管理 Hook
@@ -16,7 +20,7 @@ import { invoke } from '@tauri-apps/api/core';
  */
 export function useMediaLibrary() {
   const { project, addMedia, removeMedia } = useTimelineStore();
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tempSize, setTempSize] = useState(0);
@@ -27,7 +31,7 @@ export function useMediaLibrary() {
       const size = await getTempSize();
       setTempSize(size);
     } catch (err) {
-      console.error('Failed to get temp size:', err);
+      console.error("Failed to get temp size:", err);
     }
   }, []);
 
@@ -39,7 +43,7 @@ export function useMediaLibrary() {
 
       try {
         // 获取视频信息
-        const videoInfo = await invoke<any>('get_video_info', {
+        const videoInfo = await invoke<any>("get_video_info", {
           path: filePath,
         });
 
@@ -47,10 +51,15 @@ export function useMediaLibrary() {
         const relativePath = await copyMediaToTemp(filePath);
 
         // 获取文件名
-        const fileName = filePath.split(/[\\/]/).pop() || 'unknown';
+        const fileName = filePath.split(/[\\/]/).pop() || "unknown";
         const mediaType = getMediaType(filePath);
 
         // 创建媒体对象
+        const proxyProfile = selectProxyProfileForMedia({
+          width: videoInfo.width,
+          height: videoInfo.height,
+        });
+
         const media: Media = {
           id: `media_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           name: fileName,
@@ -66,10 +75,26 @@ export function useMediaLibrary() {
           createdAt: new Date().toISOString(),
           sampleRate: videoInfo.sample_rate,
           channels: videoInfo.channels,
+          proxyStatus: "none",
+          proxyProfile,
+          proxyUpdatedAt: new Date().toISOString(),
+          waveformStatus: "none",
+          waveformUpdatedAt: new Date().toISOString(),
         };
 
         // 添加到媒体库
         addMedia(media);
+
+        if (media.type === "video" && media.originalPath) {
+          enqueueProxyTranscode(media.id, media.originalPath, media.proxyProfile ?? "medium");
+          enqueueThumbnailGeneration(media.id, media.originalPath, {
+            mode: "first_screen",
+            priority: 12,
+          });
+        }
+        if ((media.type === "video" || media.type === "audio") && media.originalPath) {
+          enqueueWaveformGeneration(media.id, media.originalPath);
+        }
 
         // 更新 temp 文件夹大小
         await updateTempSize();
@@ -83,7 +108,7 @@ export function useMediaLibrary() {
         setIsLoading(false);
       }
     },
-    [addMedia, updateTempSize]
+    [addMedia, updateTempSize],
   );
 
   // 删除媒体文件
@@ -98,11 +123,11 @@ export function useMediaLibrary() {
 
         // 删除 temp 文件夹中的文件
         try {
-          await invoke('remove_media_from_temp', {
+          await invoke("remove_media_from_temp", {
             relativePath: media.path,
           });
         } catch (err) {
-          console.warn('Failed to remove temp file:', err);
+          console.warn("Failed to remove temp file:", err);
         }
 
         // 更新 temp 文件夹大小
@@ -113,16 +138,28 @@ export function useMediaLibrary() {
         throw err;
       }
     },
-    [project.media, removeMedia, updateTempSize]
+    [project.media, removeMedia, updateTempSize],
   );
 
   // 清理过期文件
   const cleanupOldFiles = useCallback(async () => {
     try {
-      // 获取所有正在使用的文件路径
-      const usedFiles = project.media.map((m) => m.path);
+      // 获取所有正在使用的缓存路径（含素材、代理、波形、缩略图）
+      const usedFiles = Array.from(
+        new Set(
+          project.media
+            .flatMap((media) => [
+              media.path,
+              media.proxyPath,
+              media.waveformPath,
+              media.thumbnailPath,
+              media.thumbnailDir,
+            ])
+            .filter((path): path is string => typeof path === "string" && path.length > 0),
+        ),
+      );
 
-      // 清理不在使用的文件
+      // 清理不在使用的文件（策略参数可在需要时由调用方传入）
       await cleanupTempFiles(usedFiles);
 
       // 更新 temp 文件夹大小
@@ -145,7 +182,7 @@ export function useMediaLibrary() {
     error,
     tempSize,
     tempSizeFormatted: formatFileSize(tempSize),
-    
+
     // 操作
     addMediaFile,
     deleteMedia,

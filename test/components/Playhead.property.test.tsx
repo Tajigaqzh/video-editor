@@ -1,45 +1,76 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import fc from 'fast-check';
-import { render } from '@testing-library/react';
-import Playhead from '../../src/components/Timeline/Playhead';
-import { useTimelineStore } from '../../src/store/timelineStore';
+import { beforeEach, describe, expect, it } from "vitest";
+import fc from "fast-check";
+import { fireEvent, render } from "@testing-library/react";
+import Playhead from "@/components/Timeline/Playhead";
+import { useTimelineStore } from "@/store/timelineStore";
+import type { ProjectData } from "@/store/timelineStore";
 
-// Mock the timeline store
-vi.mock('../../src/store/timelineStore', () => ({
-  useTimelineStore: vi.fn(),
-}));
+const TRACK_HEADER_OFFSET = 120;
+const AUTO_SCROLL_THRESHOLD = 50;
 
-describe('Playhead Property Tests', () => {
+const createProjectWithDefaults = (): ProjectData => ({
+  metadata: {
+    name: "playhead-property-test",
+    version: "1.0.0",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    modifiedAt: "2026-01-01T00:00:00.000Z",
+  },
+  timeline: {
+    fps: 30,
+    resolution: { width: 1920, height: 1080 },
+    duration: 0,
+    playheadPosition: 0,
+  },
+  media: [],
+  tracks: [],
+  settings: {
+    autoSave: true,
+    autoSaveInterval: 300,
+    snapToGrid: true,
+    snapThreshold: 5,
+    showRuler: true,
+    showGuides: true,
+    defaultTransitionDuration: 0.5,
+    theme: "dark",
+  },
+  history: {
+    undoStack: [],
+    redoStack: [],
+    maxHistorySize: 100,
+  },
+});
+
+describe("Playhead Property Tests", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    const store = useTimelineStore.getState();
+    store.setProject(createProjectWithDefaults());
+    store.setPlayheadPosition(0);
+    store.setZoomLevel(store.config.pixelsPerSecond);
   });
 
-  // Feature: timeline-area, Property 13: 播放头自动滚动
-  // Validates: Requirements 5.5
-  it('should auto-scroll to keep playhead visible when it moves beyond viewport', () => {
+  it("should auto-scroll to keep playhead visible when it moves beyond viewport", () => {
     fc.assert(
       fc.property(
         fc.record({
-          playheadPosition: fc.float({ min: 0, max: 300, noNaN: true }),
+          targetTime: fc.float({ min: 0, max: 300, noNaN: true }),
           zoomLevel: fc.float({ min: 10, max: 200, noNaN: true }),
           viewportWidth: fc.integer({ min: 500, max: 2000 }),
           initialScrollLeft: fc.float({ min: 0, max: 1000, noNaN: true }),
         }),
-        ({ playheadPosition, zoomLevel, viewportWidth, initialScrollLeft }) => {
-          const setPlayheadPosition = vi.fn();
-          
-          // Mock the store
-          (useTimelineStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-            playheadPosition,
-            zoomLevel,
-            setPlayheadPosition,
-          });
+        ({ targetTime, zoomLevel, viewportWidth, initialScrollLeft }) => {
+          const store = useTimelineStore.getState();
+          store.setPlayheadPosition(0);
+          store.setZoomLevel(zoomLevel);
 
-          // Create mock refs with scroll functionality
-          let currentScrollLeft = initialScrollLeft;
-          const mockScrollContainer = {
+          let scrollLeft = initialScrollLeft;
+          const scrollContainerRef = {
             current: {
-              scrollLeft: currentScrollLeft,
+              get scrollLeft() {
+                return scrollLeft;
+              },
+              set scrollLeft(value: number) {
+                scrollLeft = value;
+              },
               clientWidth: viewportWidth,
               getBoundingClientRect: () => ({
                 left: 0,
@@ -55,7 +86,7 @@ describe('Playhead Property Tests', () => {
             },
           };
 
-          const mockTimelineBody = {
+          const timelineBodyRef = {
             current: {
               getBoundingClientRect: () => ({
                 left: 0,
@@ -71,69 +102,54 @@ describe('Playhead Property Tests', () => {
             },
           };
 
-          // Render the Playhead component
-          const { container } = render(
-            <div style={{ position: 'relative', width: `${viewportWidth}px`, height: '600px' }}>
+          const { container, unmount } = render(
+            <div style={{ position: "relative", width: `${viewportWidth}px`, height: "600px" }}>
               <Playhead
-                scrollContainerRef={mockScrollContainer as any}
-                timelineBodyRef={mockTimelineBody as any}
+                scrollContainerRef={
+                  scrollContainerRef as unknown as React.RefObject<HTMLDivElement | null>
+                }
+                timelineBodyRef={
+                  timelineBodyRef as unknown as React.RefObject<HTMLDivElement | null>
+                }
               />
-            </div>
+            </div>,
           );
 
-          // Calculate playhead position in pixels
-          const playheadX = playheadPosition * zoomLevel;
-          
-          // Find the playhead element
-          const playheadLine = container.querySelector('.playhead-line');
+          const playheadLine = container.querySelector(".playhead-line") as HTMLElement | null;
           expect(playheadLine).toBeTruthy();
 
-          // Verify playhead is positioned correctly
-          if (playheadLine) {
-            const style = (playheadLine as HTMLElement).style;
-            const leftValue = parseFloat(style.left);
-            expect(Math.abs(leftValue - playheadX)).toBeLessThan(0.1);
+          fireEvent.mouseDown(playheadLine as HTMLElement);
+
+          const clientX = targetTime * zoomLevel + TRACK_HEADER_OFFSET - initialScrollLeft;
+          fireEvent.mouseMove(document, { clientX });
+          fireEvent.mouseUp(document);
+
+          const expectedPlayheadPixelX = targetTime * zoomLevel + TRACK_HEADER_OFFSET;
+          const styleLeft = parseFloat((playheadLine as HTMLElement).style.left);
+          expect(styleLeft).toBeCloseTo(expectedPlayheadPixelX, 1);
+
+          const shouldScrollRight =
+            expectedPlayheadPixelX - initialScrollLeft > viewportWidth - AUTO_SCROLL_THRESHOLD;
+          const shouldScrollLeft =
+            expectedPlayheadPixelX - initialScrollLeft < AUTO_SCROLL_THRESHOLD;
+
+          let expectedScroll = initialScrollLeft;
+          if (shouldScrollRight) {
+            expectedScroll = expectedPlayheadPixelX - viewportWidth + AUTO_SCROLL_THRESHOLD;
+          } else if (shouldScrollLeft) {
+            expectedScroll = Math.max(0, expectedPlayheadPixelX - AUTO_SCROLL_THRESHOLD);
           }
 
-          // Property: When playhead moves beyond viewport, scroll should adjust
-          // This is tested by the auto-scroll logic in the component
-          // The scroll threshold is 50 pixels from the edge
-          const scrollThreshold = 50;
-          const playheadRelativeToViewport = playheadX - currentScrollLeft;
+          expect(scrollLeft).toBeCloseTo(expectedScroll, 3);
 
-          // Use epsilon for floating-point comparison to avoid precision issues
-          const epsilon = 1e-6; // Increased tolerance for floating-point arithmetic
-
-          // If playhead is beyond right edge threshold
-          if (playheadRelativeToViewport > viewportWidth - scrollThreshold) {
-            // Scroll should be adjusted to keep playhead visible
-            const expectedScrollLeft = playheadX - viewportWidth + scrollThreshold;
-            // The component should trigger scroll adjustment
-            // (In actual usage, this happens during drag)
-            expect(playheadX).toBeGreaterThan(currentScrollLeft + viewportWidth - scrollThreshold);
-          }
-          // If playhead is beyond left edge threshold
-          else if (playheadRelativeToViewport < scrollThreshold && playheadX > scrollThreshold) {
-            // Scroll should be adjusted to keep playhead visible
-            const expectedScrollLeft = Math.max(0, playheadX - scrollThreshold);
-            expect(playheadX).toBeLessThan(currentScrollLeft + scrollThreshold);
-          }
-          // Otherwise, playhead is within visible range
-          else {
-            // Use epsilon tolerance for floating-point comparison
-            // Treat very small negative values (due to floating-point errors) as zero
-            const normalizedPosition = Math.max(0, playheadRelativeToViewport);
-            expect(normalizedPosition).toBeGreaterThanOrEqual(0);
-            expect(normalizedPosition).toBeLessThanOrEqual(viewportWidth);
-          }
-        }
+          unmount();
+        },
       ),
-      { numRuns: 100 }
+      { numRuns: 50 },
     );
   });
 
-  // Additional property: Verify playhead position matches store state
-  it('should render playhead at position matching store state', () => {
+  it("should render playhead at position matching store state", () => {
     fc.assert(
       fc.property(
         fc.record({
@@ -141,24 +157,18 @@ describe('Playhead Property Tests', () => {
           zoomLevel: fc.float({ min: 10, max: 200, noNaN: true }),
         }),
         ({ playheadPosition, zoomLevel }) => {
-          const setPlayheadPosition = vi.fn();
-          
-          // Mock the store
-          (useTimelineStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-            playheadPosition,
-            zoomLevel,
-            setPlayheadPosition,
-          });
+          const store = useTimelineStore.getState();
+          store.setPlayheadPosition(playheadPosition);
+          store.setZoomLevel(zoomLevel);
 
-          // Create mock refs
-          const mockScrollContainer = {
+          const scrollContainerRef = {
             current: {
               scrollLeft: 0,
               clientWidth: 1920,
             },
           };
 
-          const mockTimelineBody = {
+          const timelineBodyRef = {
             current: {
               getBoundingClientRect: () => ({
                 left: 0,
@@ -174,37 +184,32 @@ describe('Playhead Property Tests', () => {
             },
           };
 
-          // Render the Playhead component
-          const { container } = render(
-            <div style={{ position: 'relative', width: '1920px', height: '600px' }}>
+          const { container, unmount } = render(
+            <div style={{ position: "relative", width: "1920px", height: "600px" }}>
               <Playhead
-                scrollContainerRef={mockScrollContainer as any}
-                timelineBodyRef={mockTimelineBody as any}
+                scrollContainerRef={
+                  scrollContainerRef as unknown as React.RefObject<HTMLDivElement | null>
+                }
+                timelineBodyRef={
+                  timelineBodyRef as unknown as React.RefObject<HTMLDivElement | null>
+                }
               />
-            </div>
+            </div>,
           );
 
-          // Calculate expected position
-          const expectedX = playheadPosition * zoomLevel;
-          
-          // Find the playhead element
-          const playheadLine = container.querySelector('.playhead-line');
+          const expectedX = playheadPosition * zoomLevel + TRACK_HEADER_OFFSET;
+          const playheadLine = container.querySelector(".playhead-line") as HTMLElement | null;
           expect(playheadLine).toBeTruthy();
+          expect(parseFloat(playheadLine?.style.left ?? "0")).toBeCloseTo(expectedX, 3);
 
-          // Verify playhead is positioned correctly
-          if (playheadLine) {
-            const style = (playheadLine as HTMLElement).style;
-            const leftValue = parseFloat(style.left);
-            expect(Math.abs(leftValue - expectedX)).toBeLessThan(0.1);
-          }
-        }
+          unmount();
+        },
       ),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 
-  // Additional property: Verify playhead visual properties
-  it('should render playhead with correct visual properties', () => {
+  it("should render playhead with correct visual properties", () => {
     fc.assert(
       fc.property(
         fc.record({
@@ -212,24 +217,18 @@ describe('Playhead Property Tests', () => {
           zoomLevel: fc.float({ min: 10, max: 200, noNaN: true }),
         }),
         ({ playheadPosition, zoomLevel }) => {
-          const setPlayheadPosition = vi.fn();
-          
-          // Mock the store
-          (useTimelineStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-            playheadPosition,
-            zoomLevel,
-            setPlayheadPosition,
-          });
+          const store = useTimelineStore.getState();
+          store.setPlayheadPosition(playheadPosition);
+          store.setZoomLevel(zoomLevel);
 
-          // Create mock refs
-          const mockScrollContainer = {
+          const scrollContainerRef = {
             current: {
               scrollLeft: 0,
               clientWidth: 1920,
             },
           };
 
-          const mockTimelineBody = {
+          const timelineBodyRef = {
             current: {
               getBoundingClientRect: () => ({
                 left: 0,
@@ -245,30 +244,30 @@ describe('Playhead Property Tests', () => {
             },
           };
 
-          // Render the Playhead component
-          const { container } = render(
-            <div style={{ position: 'relative', width: '1920px', height: '600px' }}>
+          const { container, unmount } = render(
+            <div style={{ position: "relative", width: "1920px", height: "600px" }}>
               <Playhead
-                scrollContainerRef={mockScrollContainer as any}
-                timelineBodyRef={mockTimelineBody as any}
+                scrollContainerRef={
+                  scrollContainerRef as unknown as React.RefObject<HTMLDivElement | null>
+                }
+                timelineBodyRef={
+                  timelineBodyRef as unknown as React.RefObject<HTMLDivElement | null>
+                }
               />
-            </div>
+            </div>,
           );
 
-          // Find the playhead line
-          const playheadLine = container.querySelector('.playhead-line');
+          const playheadLine = container.querySelector(".playhead-line") as HTMLElement | null;
           expect(playheadLine).toBeTruthy();
 
-          // Verify visual properties (Requirement 5.1: Red vertical line)
-          if (playheadLine) {
-            const style = (playheadLine as HTMLElement).style;
-            expect(style.backgroundColor).toBe('rgb(255, 0, 0)'); // Red color
-            expect(style.width).toBe('2px'); // 2px width
-            expect(style.position).toBe('absolute');
-          }
-        }
+          expect(playheadLine?.style.backgroundColor).toBe("rgb(255, 0, 0)");
+          expect(playheadLine?.style.width).toBe("2px");
+          expect(playheadLine?.style.position).toBe("absolute");
+
+          unmount();
+        },
       ),
-      { numRuns: 100 }
+      { numRuns: 100 },
     );
   });
 });

@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "unicorn"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "pedantic": "off",
+    "style": "off"
+  },
+  "rules": {
+    "react-in-jsx-scope": "off",
+    "jsx-uses-react": "off",
+    "no-unused-vars": "off",
+    "react-hooks/exhaustive-deps": "warn",
+    "unicorn/no-empty-file": "off",
+    "unicorn/prefer-add-event-listener": "off"
+  },
+  "ignorePatterns": [
+    "node_modules/**",
+    "dist/**",
+    "coverage/**",
+    "src-tauri/target/**",
+    "src-tauri/gen/**"
+  ]
+}
